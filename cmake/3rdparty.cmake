@@ -40,16 +40,3 @@ if (MYSQLPOOL_LOG_WITH_LOGFAULT)
 
     endif()
 endif()
-
-# ExternalProject_Add(embeddedLogfault
-#     PREFIX "${EXTERNAL_PROJECTS_PREFIX}"
-#     GIT_REPOSITORY "https://github.com/jgaa/logfault.git"
-#     GIT_TAG "master"
-#     CMAKE_ARGS
-#         -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PROJECTS_INSTALL_PREFIX}
-#         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-#         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-#         -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
-#         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
-# )
-
