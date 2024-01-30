@@ -185,7 +185,7 @@ inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
 #include <iostream>
 #include <memory>
 
-#ifdef __linux__
+#if defined(__linux__) && !defined(LOGFAULT_THREAD_NAME)
 #  include <sys/types.h>
 #  include <unistd.h>
 #  define LOGFAULT_THREAD_NAME gettid()

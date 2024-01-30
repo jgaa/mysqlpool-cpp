@@ -21,8 +21,6 @@ target_include_directories(unit_tests
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     )
 
-message("CMAKE_BINARY_DIR gakke: ${CMAKE_BINARY_DIR}")
-
 target_link_libraries(unit_tests
     ${GTEST_LIBRARIES}
     mysqlpool
