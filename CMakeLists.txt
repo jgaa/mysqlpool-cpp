@@ -15,14 +15,20 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(MYSQLPOOL_WITH_TESTS "Enable Tests" ON)
 
-option(MYSQLPOOL_LOG_WITH_BOOST_LOG "Use boost::log for logging" OFF)
-
-option(MYSQLPOOL_LOG_WITH_LOGFAULT "Use logfault for logging" OFF)
-
-option(MYSQLPOOL_LOG_WITH_CLOG "Use std::clog for logging" OFF)
-
-set(MYSQLPOOL_LOGGER "clog" CACHE STRING "Log system to use. One of 'clog', 'logfault', 'boost' or 'none'")
+set(MYSQLPOOL_LOGGER "logfault" CACHE STRING "Log system to use. One of 'clog', 'logfault', 'boost' or 'none'")
 set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable")
+
+set(MYSQLPOOL_DBUSER "MYSQLPOOL_DBUSER" CACHE STRING "Environment variable to get login user name name from")
+set(MYSQLPOOL_DBPASSW "MYSQLPOOL_DBPASSW" CACHE STRING "Environment variable to get user login password from")
+set(MYSQLPOOL_DATABASE "MYSQLPOOL_DATABASE" CACHE STRING "Environment variable to get database name from")
+set(MYSQLPOOL_HOST "MYSQLPOOL_HOST" CACHE STRING "Environment variable to get the dbservers hostname or IP address from")
+set(MYSQLPOOL_PORT "MYSQLPOOL_PORT" CACHE STRING "Environment variable to get the dbservers port number from")
+
+set(DEFAULT_MYSQLPOOL_DBUSER "" CACHE STRING "Default db user")
+set(DEFAULT_MYSQLPOOL_DBPASSW "" CACHE STRING "Default db password")
+set(DEFAULT_MYSQLPOOL_DATABASE "" CACHE STRING "Default database name")
+set(DEFAULT_MYSQLPOOL_HOST "localhost" CACHE STRING "Default port to the server")
+set(DEFAULT_MYSQLPOOL_PORT 3306 CACHE STRING "Default port to the server")
 
 if (MYSQLPOOL_LOGGER STREQUAL "clog")
     set(MYSQLPOOL_LOG_WITH_CLOG ON)
@@ -66,10 +72,8 @@ if (MYSQLPOOL_LOG_WITH_BOOST_LOG)
 endif()
 
 if (MYSQLPOOL_LOG_WITH_LOGFAULT)
-    if (MYSQLPOOL_LOG_WITH_BOOST_LOG OR MYSQLPOOL_LOG_WITH_CLOG OR MYSQLPOOL_LOG_WITH_INTERNAL_LOG)
-        message( FATAL_ERROR "You must use MYSQLPOOL_LOG_WITH_BOOST_LOG or MYSQLPOOL_LOG_WITH_LOGFAULT or MYSQLPOOL_LOG_WITH_INTERNAL_LOG or neither")
-    endif()
     message(STATUS "Using restc for logging")
+    set (MYSQLPOOL_LOGDEP logfault)
 endif()
 
 if (MYSQLPOOL_LOG_WITH_CLOG)
@@ -127,3 +131,4 @@ add_subdirectory(src)
 
 # We create a configuration file so that other code that include our header files gets the correct configuration.
 CONFIGURE_FILE(config.h.template ${CMAKE_BINARY_DIR}/generated-include/mysqlpool/config.h)
+

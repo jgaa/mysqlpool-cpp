@@ -79,6 +79,10 @@ constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitabl
  *
  */
 
+class Customize {
+
+};
+
 class Mysqlpool {
 public:
     Mysqlpool(boost::asio::io_context& ctx, const DbConfig& config)

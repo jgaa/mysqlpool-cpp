@@ -106,8 +106,8 @@ private:
 
 }
 
-//#define MYSQLPOOL_TEST_LOGGING_SETUP(level) MysqlpoolTestStartLogger(level)
-#define MYSQLPOOL_TEST_LOGGING_SETUP(level) MysqlpoolTestStartLogger("trace")
+#define MYSQLPOOL_TEST_LOGGING_SETUP(level) MysqlpoolTestStartLogger(level)
+//#define MYSQLPOOL_TEST_LOGGING_SETUP(level) MysqlpoolTestStartLogger("trace")
 
 inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
     auto llevel = restc_cpp::LogLevel::INFO;

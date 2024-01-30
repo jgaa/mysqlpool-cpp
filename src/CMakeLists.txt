@@ -12,15 +12,17 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/external-projects/installed/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE $Boost_INCLUDE_DIR
     )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
 if (MYSQLPOOL_LOGDEP)
+    message("Adding logfault dependency to the library")
     add_dependencies(${PROJECT_NAME} ${MYSQLPOOL_LOGDEP})
 endif()
 
@@ -29,8 +31,11 @@ target_link_libraries(${PROJECT_NAME}
         $<BUILD_INTERFACE:${Boost_LIBRARIES}>
         $<BUILD_INTERFACE:${stdc++fs}>
         $<BUILD_INTERFACE:Threads::Threads>
-        $<BUILD_INTERFACE:ZLIB>
+#        $<BUILD_INTERFACE:ZLIB>
     )
 
 message(STATUS "Components to pack (${PROJECT_NAME}): ${CPACK_COMPONENTS_ALL}")
+
+install(DIRECTORY ${CMAKE_BINARY_DIR}/generated-include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+include(${MYSQLPOOL_ROOT}/cmake/install.cmake)
 

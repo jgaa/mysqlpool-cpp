@@ -21,7 +21,5 @@ ExternalProject_Add(logfault
         -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
 )
 
-set (MYSQLPOOL_LOGDEP logfault PARENT_SCOPE)
-
 endif()
 

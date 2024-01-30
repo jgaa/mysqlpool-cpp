@@ -29,7 +29,7 @@ is well, it returns a result-set. If something fails, we get an exception.
     Mysqlpool db{ctx, cfg};
 
     // start threads
-    db.init();
+    co_await db.init();
     ...
 
     // Do something with a database

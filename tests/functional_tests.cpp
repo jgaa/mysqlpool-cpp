@@ -1,0 +1,141 @@
+
+#include <thread>
+
+#include "mysqlpool/logging.h"
+
+#include <boost/fusion/adapted.hpp>
+
+#include "mysqlpool/mysqlpool.h"
+
+#include "gtest/gtest.h"
+//#include "mysqlpool/test_helper.h"
+
+using namespace std;
+using namespace std::string_literals;
+using namespace jgaa::mysqlpool;
+
+// Too run this test, the environment variable MYSQLPOOL_DBPASSW must be set with
+// a password to the database server to use.
+
+// If the database is not running on localhost:3306, MYSQLPOOL_HOST and MYSQLPOOL_PORT
+// may also need to be set.
+// If you test with another user than 'root', MYSQLPOOL_DBUSER needs to be set.
+// If you test aith another database than 'mysql', MYSQLPOOL_DATABASE needs to be set
+
+
+namespace {
+auto get_config() {
+    DbConfig c;
+
+    if (c.database.empty()) {
+        c.database = "mysql";
+    }
+
+    if (c.username.empty()) {
+        c.username = "root";
+    }
+
+    return c;
+}
+
+// Simple wrapper to handle the boilerplate code to run an async test with a Mysqlpool object
+template <typename rvalT, typename T>
+    requires std::invocable<T&, Mysqlpool&>
+auto run_async_test(const T& test, rvalT failValue) {
+    auto config = get_config();
+    boost::asio::io_context ctx;
+    Mysqlpool db{ctx, config};
+    promise<rvalT> promise;
+    boost::asio::co_spawn(ctx, [&]() -> boost::asio::awaitable<void> {
+        try {
+            co_await db.init();
+            promise.set_value(co_await test(db));
+        } catch (const std::exception& ex) {
+            MYSQLPOOL_LOG_ERROR_("Request failed with exception: " << ex.what());
+            promise.set_value(failValue);
+        }
+    }, boost::asio::detached);
+
+    std::jthread thread {[&ctx] {
+            ctx.run();
+        }
+    };
+
+    const auto result = promise.get_future().get();
+
+    ctx.stop();
+    return result;
+}
+
+} // anon ns
+
+
+TEST(Functional, PingServer) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
+        auto connection = co_await db.getConnection();
+        co_await connection.connection().async_ping(boost::asio::use_awaitable);
+        co_return true;
+    };
+
+    EXPECT_TRUE(run_async_test(test, false));
+}
+
+TEST(Functional, CreateTable) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
+        co_await db.exec(R"(CREATE OR REPLACE TABLE mysqlpool
+            (
+                id UUID not NULL default UUID() PRIMARY KEY,
+                name VARCHAR(128) NOT NULL,
+                color VARCHAR(16) NOT NULL DEFAULT 'green'
+            )
+        )");
+        co_return true;
+    };
+
+    EXPECT_TRUE(run_async_test(test, false));
+}
+
+TEST(Functional, InsertData) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<int64_t> {
+        auto res = co_await db.exec(R"(INSERT INTO mysqlpool (name) VALUES (?))", "Glad");
+        co_return res.affected_rows();
+    };
+
+    EXPECT_EQ(run_async_test(test, 0), 1);
+}
+
+TEST(Functional, InsertDataRows) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<int64_t> {
+        auto res = co_await db.exec(R"(INSERT INTO mysqlpool (name)
+            VALUES (?), (?), (?))", "Nusse", "Bugsy", "Kleo");
+        co_return res.affected_rows();
+    };
+
+    EXPECT_EQ(run_async_test(test, 0), 3);
+}
+
+TEST(Functional, UnpreparedStatementQuery) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<int64_t> {
+        auto res = co_await db.exec(R"(SELECT COUNT(*) FROM mysqlpool)");
+
+        if (res.has_value() && !res.rows().empty()) {
+            co_return res.rows().front().at(0).as_int64();
+        }
+
+        co_return -1;
+    };
+
+    EXPECT_EQ(run_async_test(test, 0LL), 4);
+}
+
+int main( int argc, char * argv[] )
+{
+    MYSQLPOOL_TEST_LOGGING_SETUP("trace");
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();;
+}
