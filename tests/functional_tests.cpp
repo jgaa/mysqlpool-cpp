@@ -133,6 +133,19 @@ TEST(Functional, UnpreparedStatementQuery) {
     EXPECT_EQ(run_async_test(test, 0LL), 4);
 }
 
+TEST(Functional, InsertDataRowsWithTuple) {
+
+    const auto tuple = make_tuple(string_view{"Ares"}, string_view{"Bjeff"}, string_view{"Floete"});
+
+    auto test = [&tuple](Mysqlpool& db) -> boost::asio::awaitable<int64_t> {
+        auto res = co_await db.exec(R"(INSERT INTO mysqlpool (name)
+            VALUES (?), (?), (?))", tuple);
+        co_return res.affected_rows();
+    };
+
+    EXPECT_EQ(run_async_test(test, 0), 3);
+}
+
 int main( int argc, char * argv[] )
 {
     MYSQLPOOL_TEST_LOGGING_SETUP("trace");
