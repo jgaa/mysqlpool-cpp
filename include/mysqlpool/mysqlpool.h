@@ -4,6 +4,7 @@
 //#include <algorithm>
 //#include <queue>
 #include <utility>
+#include <chrono>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
@@ -118,8 +119,46 @@ public:
     Mysqlpool& operator = (Mysqlpool&&) = delete;
 
     struct Connection {
+        enum class State {
+            ACTIVE,
+            AVAILABLE,
+            CLOSING,
+            CLOSED,
+            CONNECTING
+        };
+
+        Connection(Mysqlpool& parent, boost::mysql::tcp_connection &&conn)
+            : connection_{std::move(conn)}, parent_{parent} {}
+
         boost::mysql::tcp_connection connection_;
-        bool available_{true};
+        std::chrono::steady_clock::time_point last_use_{};
+
+        State state() const noexcept {
+            return state_;
+        }
+
+        bool isAvailable() const noexcept {
+            return state_ == State::AVAILABLE;
+        }
+
+        void setState(State state) {
+            state_ = state;
+        }
+
+        void close() {
+            setState(State::CLOSING);
+            connection_.async_close([this](boost::system::error_code ec) {
+                parent_.closed(*this);
+            });
+        }
+
+        void touch() {
+            last_use_ = std::chrono::steady_clock::now();
+        }
+
+    private:
+        std::atomic<State> state_{State::CLOSED};
+        Mysqlpool& parent_;
     };
 
     class Handle {
@@ -165,6 +204,10 @@ public:
         void reset() {
             parent_ = {};
             connection_ = {};
+        }
+
+        bool isClosed() const noexcept {
+            return connection_->state() == Connection::State::CLOSED;
         }
 
         Mysqlpool *parent_{};
@@ -235,6 +278,7 @@ public:
 
     boost::asio::awaitable<void> init();
     boost::asio::awaitable<void> close();
+    void closed(Connection& conn);
 
 private:
 
@@ -291,6 +335,7 @@ private:
 
             } else {
                 //co_return std::move(conn);
+                ++num_open_connections_;
                 co_return;
             }
         }
@@ -324,13 +369,18 @@ private:
         MYSQLPOOL_LOG_TRACE_("Exceuting " << type << " SQL query: " << query << logArgs(bound...));
     }
 
+    void startTimer();
+    void onTimer(boost::system::error_code ec);
+
     void release(Handle& h) noexcept;
     std::string dbUser() const;
     std::string dbPasswd() const;
 
     boost::asio::io_context& ctx_;
+    std::atomic<unsigned> num_open_connections_{};
     mutable std::mutex mutex_;
-    std::vector<Connection> connections_;
+    std::vector<std::unique_ptr<Connection>> connections_;
+    boost::asio::steady_timer timer_{ctx_};
     boost::asio::deadline_timer semaphore_;
     const DbConfig& config_;
 };

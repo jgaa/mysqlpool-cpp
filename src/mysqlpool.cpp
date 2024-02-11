@@ -28,10 +28,34 @@ asio::awaitable<Mysqlpool::Handle> Mysqlpool::getConnection(bool throwOnEmpty) {
                 co_return Handle{};
             }
             if (auto it = std::ranges::find_if(connections_, [](const auto& c) {
-                    return c.available_;
+                    return c->isAvailable();
                 } ); it != connections_.end()) {
-                it->available_ = false;
-                handle.emplace(this, &*it);
+                (*it)->setState(Connection::State::ACTIVE);
+                handle.emplace(this, &**it);
+            }
+
+            if (!handle) {
+                // Se if we have any closed connections
+                if (auto it = std::ranges::find_if(connections_, [](const auto& c) {
+                        return c->state() == Connection::State::CLOSED;
+                    } ); it != connections_.end()) {
+                    handle.emplace(this, &**it);
+                }
+
+                // See if we can open more connections
+                if (!handle && config_.max_connections < connections_.size()) {
+                    mysql::tcp_connection conn{ctx_.get_executor()};
+                    connections_.emplace_back(std::make_unique<Connection>(*this, std::move(conn)));
+                    handle.emplace(this, &*connections_.back());
+                }
+
+                if (handle && !handle->isClosed()) {
+                    try {
+                        co_await handle->reconnect();
+                    } catch (const runtime_error& ex) {
+                        MYSQLPOOL_LOG_WARN_("Failed to re-connect CLOSED connection");
+                    }
+                }
             }
         }
 
@@ -39,6 +63,7 @@ asio::awaitable<Mysqlpool::Handle> Mysqlpool::getConnection(bool throwOnEmpty) {
             MYSQLPOOL_LOG_TRACE_("Returning a DB connection.");
             co_return std::move(*handle);
         }
+
 
         MYSQLPOOL_LOG_TRACE_("Waiting for a DB connection to become available...");
         const auto [ec] = co_await semaphore_.async_wait(as_tuple(asio::use_awaitable));
@@ -70,7 +95,7 @@ boost::asio::awaitable<void> Mysqlpool::close()
             // Delete the Connection object
             std::scoped_lock lock{mutex_};
             if (auto it = find_if(connections_.begin(), connections_.end(), [&](const auto& v) {
-                    return addressof(v) == conn.connection_;
+                    return v.get() == conn.connection_;
                 }); it != connections_.end()) {
                 connections_.erase(it);
             } else {
@@ -79,6 +104,16 @@ boost::asio::awaitable<void> Mysqlpool::close()
         } catch(const exception&) {}
     }
 }
+
+void Mysqlpool::closed(Connection &conn)
+{
+    conn.setState(Connection::State::CLOSED);
+
+    // If we have requests pending, they may want to reuse this connection.
+    boost::system::error_code ec;
+    semaphore_.cancel_one(ec);
+}
+
 
 boost::asio::awaitable<void> Mysqlpool::init() {
 
@@ -101,11 +136,10 @@ boost::asio::awaitable<void> Mysqlpool::init() {
 
     connections_.reserve(config_.max_connections);
 
-
-    for(size_t i = 0; i < config_.max_connections; ++i) {
+    for(size_t i = 0; i < config_.min_connections; ++i) {
         mysql::tcp_connection conn{ctx_.get_executor()};
         co_await connect(conn, endpoints, 0, true);
-        connections_.emplace_back(std::move(conn));
+        connections_.emplace_back(make_unique<Connection>(*this, std::move(conn)));
         co_return;
     }
 
@@ -143,11 +177,37 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
     return true;
 }
 
+void Mysqlpool::startTimer()
+{
+    timer_.expires_from_now(chrono::milliseconds{config_.timer_interval_ms});
+    timer_.async_wait([this](auto ec) {
+        onTimer(ec);
+        startTimer();
+    });
+}
+
+void Mysqlpool::onTimer(boost::system::error_code ec)
+{
+    MYSQLPOOL_LOG_DEBUG_("onTimer()");
+    std::scoped_lock lock{mutex_};
+    const auto watermark = chrono::steady_clock::now() - chrono::seconds{config_.connection_idle_limit_seconds};
+    for(auto& conn : connections_) {
+        if (conn->isAvailable() && conn->last_use_ >= watermark) {
+            MYSQLPOOL_LOG_DEBUG_("Closing idle connection.");
+            --num_open_connections_;
+            conn->close();
+        }
+    }
+}
+
 void Mysqlpool::release(Handle &h) noexcept {
     if (h.connection_) {
         std::scoped_lock lock{mutex_};
-        assert(h.connection_->available_ == false);
-        h.connection_->available_ = true;
+        assert(!h.connection_->isAvailable());
+        if (h.connection_->state() == Connection::State::ACTIVE) {
+            h.connection_->setState(Connection::State::AVAILABLE);
+        }
+        h.connection_->touch();
     }
     boost::system::error_code ec;
     semaphore_.cancel_one(ec);
@@ -183,7 +243,15 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
         throw resolve_failed{"Failed to resolve database hostname"};
     }
 
-    co_await parent_->connect(connection_->connection_, endpoints, 0, true);
+    connection_->setState(Connection::State::CONNECTING);
+    try {
+        co_await parent_->connect(connection_->connection_, endpoints, 0, true);
+        connection_->setState(Connection::State::AVAILABLE);
+    } catch(const std::runtime_error& ex) {
+        connection_->setState(Connection::State::CLOSED);
+        MYSQLPOOL_LOG_WARN_("Failed to reconnect: " << ex.what());
+    }
+
     co_return;
 }
 
