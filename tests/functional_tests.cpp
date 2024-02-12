@@ -146,6 +146,16 @@ TEST(Functional, InsertDataRowsWithTuple) {
     EXPECT_EQ(run_async_test(test, 0), 3);
 }
 
+TEST(Functional, ClosePool) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
+        co_await db.close();
+        co_return true;
+    };
+
+    EXPECT_NO_THROW(run_async_test(test, false));
+}
+
 int main( int argc, char * argv[] )
 {
     MYSQLPOOL_TEST_LOGGING_SETUP("trace");

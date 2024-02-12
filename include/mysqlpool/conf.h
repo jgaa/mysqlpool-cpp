@@ -23,6 +23,7 @@ struct DbConfig {
     unsigned retry_connect_delay_ms = 2000;
     unsigned timer_interval_ms = 5000;
     unsigned connection_idle_limit_seconds = 120;
+    unsigned timeout_close_all_databases_seconds = 10;
 };
 
 }

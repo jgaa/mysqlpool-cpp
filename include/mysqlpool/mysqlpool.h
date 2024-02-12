@@ -1,13 +1,14 @@
 #pragma once
 
 #include <iostream>
-//#include <algorithm>
-//#include <queue>
 #include <utility>
 #include <chrono>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include "mysqlpool/conf.h"
 #include "mysqlpool/config.h"
@@ -110,6 +111,10 @@ public:
     Mysqlpool(boost::asio::io_context& ctx, const DbConfig& config)
         : ctx_{ctx}, semaphore_{ctx}, config_{config}
     {
+        if (config_.max_connections == 0) {
+            assert(config_.max_connections);
+            throw std::runtime_error{"Max db-connections must be non-zero!"};
+        }
     }
 
     Mysqlpool(const Mysqlpool&) = delete;
@@ -120,30 +125,26 @@ public:
 
     struct Connection {
         enum class State {
-            ACTIVE,
-            AVAILABLE,
+            CONNECTED,
             CLOSING,
             CLOSED,
             CONNECTING
         };
 
-        Connection(Mysqlpool& parent, boost::mysql::tcp_connection &&conn)
-            : connection_{std::move(conn)}, parent_{parent} {}
+        Connection(Mysqlpool& parent, boost::mysql::tcp_connection &&conn);
 
-        boost::mysql::tcp_connection connection_;
-        std::chrono::steady_clock::time_point last_use_{};
+        ~Connection();
+
 
         State state() const noexcept {
             return state_;
         }
 
         bool isAvailable() const noexcept {
-            return state_ == State::AVAILABLE;
+            return !taken() && state_ == State::CONNECTED;
         }
 
-        void setState(State state) {
-            state_ = state;
-        }
+        void setState(State state);
 
         void close() {
             setState(State::CLOSING);
@@ -152,13 +153,37 @@ public:
             });
         }
 
-        void touch() {
-            last_use_ = std::chrono::steady_clock::now();
+        void touch();
+
+        auto expires() const noexcept {
+            return expires_;
         }
 
+        bool taken() const noexcept {
+            return taken_;
+        }
+
+        void take() {
+            assert(!taken_);
+            taken_ = true;
+        }
+
+        void release() {
+            assert(taken_);
+            taken_ = false;
+        }
+
+        const auto& uuid() const noexcept {
+            return uuid_;
+        }
+
+        boost::mysql::tcp_connection connection_;
     private:
         std::atomic<State> state_{State::CLOSED};
+        bool taken_{false};
         Mysqlpool& parent_;
+        const boost::uuids::uuid uuid_{parent_.uuid_gen_()};
+        std::chrono::steady_clock::time_point expires_{};
     };
 
     class Handle {
@@ -169,13 +194,15 @@ public:
         Handle(Handle &&v) noexcept
             : parent_{std::exchange(v.parent_, {})}
             , connection_{std::exchange(v.connection_, {})}
+            , uuid_{std::exchange(v.uuid_, {})}
         {
-            int i = 0;
         }
 
         ~Handle() {
             if (parent_) {
                 parent_->release(*this);
+            } else {
+                assert(!connection_);
             }
         }
 
@@ -185,11 +212,16 @@ public:
             v.parent_ = {};
             connection_ = v.connection_;
             v.connection_ = {};
+            v.uuid_ = uuid_;
+            uuid_ = {};
             return *this;
         }
 
         explicit Handle(Mysqlpool* db, Connection* conn)
-            : parent_{db}, connection_{conn} {}
+            : parent_{db}, connection_{conn}, uuid_{conn->uuid()}
+        {
+            connection_->take();
+        }
 
         // Return the mysql connection
         auto& connection() {
@@ -210,8 +242,13 @@ public:
             return connection_->state() == Connection::State::CLOSED;
         }
 
+        auto uuid() const noexcept {
+            return uuid_;
+        }
+
         Mysqlpool *parent_{};
         Connection *connection_{};
+        boost::uuids::uuid uuid_;
 
         boost::asio::awaitable<void> reconnect();
     };
@@ -316,7 +353,7 @@ private:
                     || ec == boost::asio::error::eof) {
                     if (retry && iteration == 0 && ++retries <= config_.retry_connect) {
                         MYSQLPOOL_LOG_INFO_("Failed to connect to the database server. Will retry "
-                                 << retries << "/" << config_.retry_connect);
+                                            << retries << "/" << config_.retry_connect);
                         boost::asio::steady_timer timer(ctx_);
                         boost::system::error_code ec;
                         timer.expires_after(std::chrono::milliseconds{config_.retry_connect_delay_ms});
@@ -327,8 +364,8 @@ private:
 
                 retries = 0;
                 MYSQLPOOL_LOG_DEBUG_("Failed to connect to to mysql compatible database at "
-                          << ep.endpoint()<< " as user " << dbUser() << " with database "
-                          << config_.database << ": " << ec.message());
+                                     << ep.endpoint()<< " as user " << dbUser() << " with database "
+                                     << config_.database << ": " << ec.message());
                 if (why.empty()) {
                     why = ec.message();
                 }
@@ -341,10 +378,10 @@ private:
         }
 
         MYSQLPOOL_LOG_ERROR_("Failed to connect to to mysql compatible database at "
-                  << config_.host << ':' << config_.port
-                  << " as user " << dbUser() << " with database "
-                  << config_.database
-                  << ": " << why);
+                             << config_.host << ':' << config_.port
+                             << " as user " << dbUser() << " with database "
+                             << config_.database
+                             << ": " << why);
 
         throw std::runtime_error{"Failed to connect to database"};
     }
@@ -383,6 +420,10 @@ private:
     boost::asio::steady_timer timer_{ctx_};
     boost::asio::deadline_timer semaphore_;
     const DbConfig& config_;
+    bool closed_{false};
+    static boost::uuids::random_generator uuid_gen_;
 };
 
 } // namespace
+
+std::ostream& operator << (std::ostream& out, const jgaa::mysqlpool::Mysqlpool::Connection::State& state);
