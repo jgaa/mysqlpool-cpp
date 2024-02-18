@@ -96,13 +96,13 @@ private:
     LogLevel current_ = LogLevel::INFO;
 };
 
-#define MYSQLPOOL_LOG_EVENT(level, msg) restc_cpp::Logger::Instance().Relevant(level) && restc_cpp::LogEvent{level}.Event() << msg
+#define MYSQLPOOL_LOG_EVENT(level, msg) jgaa::mysqlpool::Logger::Instance().Relevant(level) && jgaa::mysqlpool::LogEvent{level}.Event() << msg
 
-#define MYSQLPOOL_LOG_ERROR_(msg)     MYSQLPOOL_LOG_EVENT(restc_cpp::LogLevel::LERROR, msg)
-#define MYSQLPOOL_LOG_WARN_(msg)      MYSQLPOOL_LOG_EVENT(restc_cpp::LogLevel::WARNING, msg)
-#define MYSQLPOOL_LOG_INFO_(msg)      MYSQLPOOL_LOG_EVENT(restc_cpp::LogLevel::INFO, msg)
-#define MYSQLPOOL_LOG_DEBUG_(msg)     MYSQLPOOL_LOG_EVENT(restc_cpp::LogLevel::DEBUG, msg)
-#define MYSQLPOOL_LOG_TRACE_(msg)     MYSQLPOOL_LOG_EVENT(restc_cpp::LogLevel::TRACE, msg)
+#define MYSQLPOOL_LOG_ERROR_(msg)     MYSQLPOOL_LOG_EVENT(jgaa::mysqlpool::LogLevel::LERROR, msg)
+#define MYSQLPOOL_LOG_WARN_(msg)      MYSQLPOOL_LOG_EVENT(jgaa::mysqlpool::LogLevel::WARNING, msg)
+#define MYSQLPOOL_LOG_INFO_(msg)      MYSQLPOOL_LOG_EVENT(jgaa::mysqlpool::LogLevel::INFO, msg)
+#define MYSQLPOOL_LOG_DEBUG_(msg)     MYSQLPOOL_LOG_EVENT(jgaa::mysqlpool::LogLevel::DEBUG, msg)
+#define MYSQLPOOL_LOG_TRACE_(msg)     MYSQLPOOL_LOG_EVENT(jgaa::mysqlpool::LogLevel::TRACE, msg)
 
 }
 
@@ -110,11 +110,11 @@ private:
 //#define MYSQLPOOL_TEST_LOGGING_SETUP(level) MysqlpoolTestStartLogger("trace")
 
 inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
-    auto llevel = restc_cpp::LogLevel::INFO;
+    auto llevel = jgaa::mysqlpool::LogLevel::INFO;
     if (level == "debug") {
-        llevel = restc_cpp::LogLevel::DEBUG;
+        llevel = jgaa::mysqlpool::LogLevel::DEBUG;
     } else if (level == "trace") {
-        llevel = restc_cpp::LogLevel::TRACE;
+        llevel = jgaa::mysqlpool::LogLevel::TRACE;
     } else if (level == "info") {
         ;  // Do nothing
     } else {
@@ -122,11 +122,11 @@ inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
         return;
     }
 
-    restc_cpp::Logger::Instance().SetLogLevel(llevel);
+    jgaa::mysqlpool::Logger::Instance().SetLogLevel(llevel);
 
-    restc_cpp::Logger::Instance().SetHandler([](restc_cpp::LogLevel level,
+    jgaa::mysqlpool::Logger::Instance().SetHandler([](jgaa::mysqlpool::LogLevel level,
                                              const std::string& msg) {
-        static const std::array<std::string, 6> levels = {"NONE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"};
+        static const auto levels = std::to_array<std::string_view>({"NONE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"});
 
         const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 
@@ -141,14 +141,16 @@ inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
 
 #elif defined MYSQLPOOL_LOG_WITH_BOOST_LOG
 
-#ifndef WIN32
-#	define BOOST_LOG_DYN_LINK 1
-#endif
+// #ifndef WIN32
+// #	define BOOST_LOG_DYN_LINK 1
+// #endif
 
 #include <iostream>
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/log/utility/setup/console.hpp>
 #include <boost/log/expressions.hpp>
+#include <boost/log/utility/setup/common_attributes.hpp>
 
 #define MYSQLPOOL_LOG_ERROR_(msg)     BOOST_LOG_TRIVIAL(error) << msg
 #define MYSQLPOOL_LOG_WARN_(msg)      BOOST_LOG_TRIVIAL(warning) << msg
@@ -170,6 +172,10 @@ inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
         std::cerr << "Unknown log-level: " << level << std::endl;
         return;
     }
+
+    boost::log::add_common_attributes();
+
+    boost::log::add_console_log(std::clog, boost::log::keywords::format = "[%TimeStamp%][%Severity%]: %Message%");
 
     boost::log::core::get()->set_filter
     (
@@ -291,7 +297,7 @@ inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
 
 #if (MYSQLPOOL_LOG_LEVEL < 3)
 #   undef MYSQLPOOL_LOG_INFO_
-#   define MYSQLPOOL_LOG_TRACE_(msg)
+#   define MYSQLPOOL_LOG_INFO_(msg)
 #endif
 
 #if (MYSQLPOOL_LOG_LEVEL < 2)

@@ -1,6 +1,7 @@
 
-#include "mysqlpool/logging.h"
+#include <regex>
 
+#include "mysqlpool/logging.h"
 #include <boost/fusion/adapted.hpp>
 
 #include "mysqlpool/mysqlpool.h"
@@ -11,6 +12,28 @@
 using namespace std;
 using namespace std::string_literals;
 using namespace jgaa::mysqlpool;
+
+namespace {
+struct ClogRedirector {
+    ClogRedirector(string& out, ostream& ios = std::clog)
+        : out_{out}, ios_{ios} {
+
+        orig_ = ios.rdbuf();
+        ios_.rdbuf(buffer_.rdbuf());
+    }
+
+    ~ClogRedirector() {
+        out_ = buffer_.str();
+        ios_.rdbuf(orig_);
+    }
+
+private:
+    ostream& ios_;
+    decltype(std::clog.rdbuf()) orig_{};
+    stringstream buffer_;
+    string& out_;
+};
+}
 
 TEST(UnitConfig, EnvVars) {
     const auto used_host = "myhost.example.com"s;
@@ -34,9 +57,66 @@ TEST(UnitConfig, EnvVars) {
 
 }
 
+#ifdef MYSQLPOOL_LOG_WITH_LOGFAULT
+TEST(Logfault, Hello) {
+
+    string output;
+    {
+        ClogRedirector redir{output};
+        MYSQLPOOL_LOG_DEBUG_("Test log");
+    }
+
+    regex pattern{R"(.* DEBUGGING .* Test log.*)"};
+    EXPECT_TRUE(regex_search(output, pattern));
+}
+#endif
+
+#ifdef MYSQLPOOL_LOG_WITH_CLOG
+TEST(Clog, Hello) {
+
+    string output;
+    {
+        ClogRedirector redir{output};
+        MYSQLPOOL_LOG_DEBUG_("Test log");
+    }
+
+    regex pattern{R"(DEBUG Test log.*)"};
+    EXPECT_TRUE(regex_search(output, pattern));
+}
+#endif
+
+#ifdef MYSQLPOOL_LOG_WITH_INTERNAL_LOG
+TEST(InternalLog, Hello) {
+
+    string output;
+    {
+        ClogRedirector redir{output};
+        MYSQLPOOL_LOG_DEBUG_("Test log");
+    }
+
+    regex pattern{R"(DEBUG \d* Test log.*)"};
+    EXPECT_TRUE(regex_search(output, pattern));
+}
+#endif
+
+#ifdef MYSQLPOOL_LOG_WITH_BOOST_LOG
+TEST(BoostLog, Hello) {
+
+    string output;
+    {
+        ClogRedirector redir{output};
+        MYSQLPOOL_LOG_DEBUG_("Test log");
+        boost::log::core::get()->flush();
+    }
+
+    regex pattern{R"(.*\[debug\]\: Test log.*)"};
+    EXPECT_TRUE(regex_search(output, pattern));
+}
+#endif
+
 int main( int argc, char * argv[] )
 {
-    MYSQLPOOL_TEST_LOGGING_SETUP("trace");
+    MYSQLPOOL_TEST_LOGGING_SETUP("debug");
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();;
 }

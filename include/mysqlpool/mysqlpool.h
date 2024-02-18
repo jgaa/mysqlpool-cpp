@@ -424,6 +424,12 @@ private:
     static boost::uuids::random_generator uuid_gen_;
 };
 
+const std::string& toString(::jgaa::mysqlpool::Mysqlpool::Connection::State state);
+
 } // namespace
 
-std::ostream& operator << (std::ostream& out, const jgaa::mysqlpool::Mysqlpool::Connection::State& state);
+// Does not work with the nightnmare named Boost.Log
+//::std::ostream& operator << (::std::ostream& out, const ::jgaa::mysqlpool::Mysqlpool::Connection::State state);
+
+
+

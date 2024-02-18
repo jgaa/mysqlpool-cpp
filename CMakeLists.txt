@@ -32,11 +32,13 @@ set(DEFAULT_MYSQLPOOL_PORT 3306 CACHE STRING "Default port to the server")
 
 if (MYSQLPOOL_LOGGER STREQUAL "clog")
     set(MYSQLPOOL_LOG_WITH_CLOG ON)
+elseif (MYSQLPOOL_LOGGER STREQUAL "internal")
+    set(MYSQLPOOL_LOG_WITH_INTERNAL_LOG ON)
 elseif (MYSQLPOOL_LOGGER STREQUAL "logfault")
     set(MYSQLPOOL_LOG_WITH_LOGFAULT ON)
 elseif (MYSQLPOOL_LOGGER STREQUAL "boost")
     set(MYSQLPOOL_LOG_WITH_BOOST_LOG ON)
-elseif (MYSQLPOOL_LOGGER STREQUAL "node")
+elseif (MYSQLPOOL_LOGGER STREQUAL "none")
     message("Logging is disabled")
 else()
     message(FATAL_ERROR "Unsupported logger ${MYSQLPOOL_LOGGER}")
@@ -64,7 +66,7 @@ if (MYSQLPOOL_LOG_WITH_INTERNAL_LOG)
 endif()
 
 if (MYSQLPOOL_LOG_WITH_BOOST_LOG)
-    set(BOOST_LOG_DEP log)
+    set(BOOST_LOG_DEP log_setup log)
     message(STATUS "Using Boost.Log for logging (brace for horrors!)")
 endif()
 
@@ -95,15 +97,11 @@ endif()
 option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     system
-#    date_time
-#    coroutine
     context
     chrono
     json
     ${BOOST_LOG_DEP}
     )
-
-#set(MYSQLPOOL_LIBS = ${Boost_LIBRARIES} stdc++fs ZLIB Threads::Threads)
 
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY

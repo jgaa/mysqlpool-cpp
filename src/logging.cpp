@@ -1,10 +1,10 @@
 
 
-#include "restc-cpp/logging.h"
+#include "mysqlpool/logging.h"
 
 using namespace std;
 
-namespace restc_cpp {
+namespace jgaa::mysqlpool {
 
 Logger &Logger::Instance() noexcept
 {
@@ -17,4 +17,5 @@ LogEvent::~LogEvent()
     Logger::Instance().onEvent(level_, msg_.str());
 }
 
-}
+} // ns
+

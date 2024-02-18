@@ -6,17 +6,16 @@
 #include "mysqlpool/mysqlpool.h"
 #include "mysqlpool/logging.h"
 
-
 using namespace std;
 namespace asio = boost::asio;
 namespace mysql = boost::mysql;
 
-std::ostream& operator << (std::ostream& out, const jgaa::mysqlpool::Mysqlpool::Connection::State& state) {
-    static const auto names = to_array<string_view>({"CONNECTED", "CLOSING", "CLOSED", "CONNECTING"});
-    return out << names.at(static_cast<size_t>(state));
-}
-
 namespace jgaa::mysqlpool {
+
+const std::string& toString(::jgaa::mysqlpool::Mysqlpool::Connection::State state) {
+    static const auto names = std::to_array<std::string>({"CONNECTED", "CLOSING", "CLOSED", "CONNECTING"});
+    return names.at(static_cast<size_t>(state));
+}
 
 boost::uuids::random_generator Mysqlpool::uuid_gen_;
 
@@ -347,7 +346,8 @@ Mysqlpool::Connection::~Connection()
 }
 
 void Mysqlpool::Connection::setState(State state) {
-    MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " changing state from " << state_ << " to " << state);
+    MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " changing state from "
+                                          << toString(state_) << " to " << toString(state));
     state_ = state;
 }
 
