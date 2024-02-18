@@ -37,6 +37,11 @@ concept tuple_like = !std::is_reference_v<T>
                         }(std::make_index_sequence<std::tuple_size_v<T>>());
 
 
+/*! Exception thrown if a statement was aborted.
+ *
+ *  For example if a connection is about to made after
+ *  `close()` is called.
+ */
 struct aborted : public std::runtime_error {
     aborted() noexcept : std::runtime_error{"aborted"} {};
 
@@ -44,13 +49,14 @@ struct aborted : public std::runtime_error {
     aborted(T message) : std::runtime_error{message} {};
 };
 
+/*! The hostname of the database server could not be resolved */
 struct resolve_failed : public std::runtime_error {
 
     template <typename T>
     resolve_failed(T message) : std::runtime_error{message} {};
 };
 
-
+/*! Some error occured for a query */
 struct db_err : public std::runtime_error {
 
     db_err(boost::system::error_code ec, std::string message) noexcept
@@ -67,11 +73,13 @@ private:
     boost::system::error_code ec_;
 };
 
+/*! A query failed because a unique constraint was violated */
 struct db_err_exists : public db_err {
     db_err_exists(boost::system::error_code ec)
         : db_err(ec, ec.message()) {}
 };
 
+namespace detail {
 
 template <typename T>
 concept OptionalPrintable = requires {
@@ -79,10 +87,7 @@ concept OptionalPrintable = requires {
     std::cout << *std::declval<T>();
 };
 
-} // namespace
-
-// TODO: Move this out of the global namespace
-template <::jgaa::mysqlpool::OptionalPrintable T>
+template <OptionalPrintable T>
 std::ostream& operator << (std::ostream& out, const T& val) {
     if (val) {
         return out << *val;
@@ -90,7 +95,7 @@ std::ostream& operator << (std::ostream& out, const T& val) {
     return out << "(null)";
 }
 
-namespace jgaa::mysqlpool {
+}
 
 using results = boost::mysql::results;
 
@@ -313,11 +318,36 @@ public:
         co_return std::move(res);
     }
 
+    /*! Initialize the pool
+     *
+     * Init will initialzie the internal structures and try to
+     * open `DbConfig.min_connections` connections to the database.
+     */
     boost::asio::awaitable<void> init();
+
+    /*! Gracefully closes all the database connections
+     *
+     *  A connection will not be closed if the client is currently
+     *  exeuting a query or having an instance of a `Handle` that
+     *  holds a connection object.
+     *
+     *  Close will wait up to `DbConfig.timeout_close_all_databases_seconds`
+     *  to gracefully close all connections. After that it returns wether
+     *  the connections are closed or not.
+     *
+     *  New statements can not be executed, and `getConnection()` will fail
+     *  after `close()` is called.
+     */
     boost::asio::awaitable<void> close();
-    void closed(Connection& conn);
 
 private:
+
+    /*! Internal method called by a `Connection` after it is closed.
+     *
+     *  Used to allow the pool to maintain state of the connections
+     *  and pending queries.
+     */
+    void closed(Connection& conn);
 
     template <typename epT, typename connT = boost::mysql::tcp_connection>
     boost::asio::awaitable<void> connect(connT& conn, epT& endpoints, unsigned iteration, bool retry) {
@@ -391,6 +421,7 @@ private:
 
     template <typename... T>
     std::string logArgs(const T... args) {
+        using namespace detail;
         if constexpr (sizeof...(T)) {
             std::stringstream out;
             out << " | args: ";
