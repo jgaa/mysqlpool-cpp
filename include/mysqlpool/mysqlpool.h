@@ -82,9 +82,9 @@ struct db_err_exists : public db_err {
 namespace detail {
 
 template <typename T>
-concept OptionalPrintable = requires {
+concept OptionalPrintable = requires (T v) {
     std::is_same_v<std::remove_cv<T>, std::optional<typename T::value_type>>;
-    std::cout << *std::declval<T>();
+    std::cout << *v;
 };
 
 template <OptionalPrintable T>
@@ -100,16 +100,6 @@ std::ostream& operator << (std::ostream& out, const T& val) {
 using results = boost::mysql::results;
 
 constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitable);
-
-// /*! Database interface
-//  *
-//  * Normally a singleton
-//  *
-//  */
-
-// class Customize {
-
-// };
 
 struct Options {
     bool reconnect_and_retry_query_{true};
@@ -288,7 +278,7 @@ public:
         boost::asio::awaitable<void> reconnect();
     };
 
-    [[nodiscard]] boost::asio::awaitable<Handle> getConnection(const Options& opts);
+    [[nodiscard]] boost::asio::awaitable<Handle> getConnection(const Options& opts = {});
 
     template<tuple_like T>
     boost::asio::awaitable<results> exec(std::string_view query, const T& tuple) {
