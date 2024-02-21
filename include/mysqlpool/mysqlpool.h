@@ -314,7 +314,7 @@ public:
             && !conn.connectionWrapper()->isSameTimeZone(opts.locale_name)) {
 
             // TODO: Cache this prepared statement
-            const auto zone_query = format("SET time_zone=?", opts.locale_name);
+            const auto zone_query = "SET time_zone=?";
             logQuery("locale", zone_query, opts.locale_name);
             auto [sec, stmt] = co_await conn.connection().async_prepare_statement(zone_query, diag, tuple_awaitable);
             if (!handleError(sec, diag)) {
