@@ -101,14 +101,20 @@ using results = boost::mysql::results;
 
 constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitable);
 
-/*! Database interface
- *
- * Normally a singleton
- *
- */
+// /*! Database interface
+//  *
+//  * Normally a singleton
+//  *
+//  */
 
-class Customize {
+// class Customize {
 
+// };
+
+struct Options {
+    bool reconnect_and_retry_query_{true};
+    std::string locale_name;
+    bool throw_on_empty_connection{false};
 };
 
 class Mysqlpool {
@@ -182,10 +188,26 @@ public:
             return uuid_;
         }
 
+        // NB: not synchronized. Assumes safe access when it's not being changed.
+        void setTimeZone(const std::string& name) {
+            time_zone_name_ = name;
+        }
+
+        // NB: not synchronized. Assumes safe access when it's not being changed.
+        const std::string timeZone() const {
+            return time_zone_name_;
+        }
+
+        // NB: not synchronized. Assumes safe access when it's not being changed.
+        bool isSameTimeZone(std::string_view name) const noexcept {
+            return name == time_zone_name_;
+        }
+
         boost::mysql::tcp_connection connection_;
     private:
         std::atomic<State> state_{State::CLOSED};
         bool taken_{false};
+        std::string time_zone_name_;
         Mysqlpool& parent_;
         const boost::uuids::uuid uuid_{parent_.uuid_gen_()};
         std::chrono::steady_clock::time_point expires_{};
@@ -251,6 +273,14 @@ public:
             return uuid_;
         }
 
+        auto& connectionWrapper() noexcept {
+            return connection_;
+        }
+
+        const auto& connectionWrapper() const noexcept {
+            return connection_;
+        }
+
         Mysqlpool *parent_{};
         Connection *connection_{};
         boost::uuids::uuid uuid_;
@@ -258,23 +288,7 @@ public:
         boost::asio::awaitable<void> reconnect();
     };
 
-    [[nodiscard]] boost::asio::awaitable<Handle> getConnection(bool throwOnEmpty = true);
-
-    // Execute a query or prepared, bound statement
-    template <BOOST_MYSQL_EXECUTION_REQUEST T>
-    boost::asio::awaitable<results> exec(T query) {
-        auto conn = co_await getConnection();
-        logQuery("static", query);
-        results res;
-        boost::mysql::diagnostics diag;
-        auto [ec] = co_await conn.connection().async_execute(query,
-                                                             res, diag,
-                                                             tuple_awaitable);
-        if (ec) {
-            handleError(ec, diag);
-        }
-        co_return std::move(res);
-    }
+    [[nodiscard]] boost::asio::awaitable<Handle> getConnection(const Options& opts);
 
     template<tuple_like T>
     boost::asio::awaitable<results> exec(std::string_view query, const T& tuple) {
@@ -287,22 +301,53 @@ public:
         co_return res;
     }
 
+    template<tuple_like T>
+    boost::asio::awaitable<results> exec(std::string_view query,  const Options& opts, const T& tuple) {
+
+        results res;
+        co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
+            res = co_await exec(query, opts, args...);
+        }, tuple);
+
+        co_return res;
+    }
+
+
     template<typename ...argsT>
-    boost::asio::awaitable<results> exec(std::string_view query, argsT ...args) {
-        auto conn = co_await getConnection();
-        logQuery("statement", query, args...);
+    boost::asio::awaitable<results> exec(std::string_view query, const Options& opts, argsT ...args) {
+        auto conn = co_await getConnection(opts);
         results res;
         boost::mysql::diagnostics diag;
 
     again:
+        if (!opts.locale_name.empty()
+            && !conn.connectionWrapper()->isSameTimeZone(opts.locale_name)) {
+
+            // TODO: Cache this prepared statement
+            const auto zone_query = format("SET time_zone=?", opts.locale_name);
+            logQuery("locale", zone_query, opts.locale_name);
+            auto [sec, stmt] = co_await conn.connection().async_prepare_statement(zone_query, diag, tuple_awaitable);
+            if (!handleError(sec, diag)) {
+                co_await conn.reconnect();
+                goto again;
+            }
+            auto [ec] = co_await conn.connection().async_execute(stmt.bind(opts.locale_name), res, diag, tuple_awaitable);
+            if (!handleError(ec, diag)) {
+                co_await conn.reconnect();
+                goto again;
+            }
+            conn.connectionWrapper()->setTimeZone(opts.locale_name);
+        }
 
         if constexpr (sizeof...(argsT) == 0) {
+            logQuery("static", query);
             auto [ec] = co_await conn.connection().async_execute(query, res, diag, tuple_awaitable);
             if (!handleError(ec, diag)) {
                 co_await conn.reconnect();
                 goto again;
             }
         } else {
+            logQuery("statement", query, args...);
             auto [ec, stmt] = co_await conn.connection().async_prepare_statement(query, diag, tuple_awaitable);
             if (!handleError(ec, diag)) {
                 co_await conn.reconnect();
@@ -316,6 +361,11 @@ public:
         }
 
         co_return std::move(res);
+    }
+
+    template<typename ...argsT>
+    boost::asio::awaitable<results> exec(std::string_view query, argsT ...args) {
+        co_return co_await exec(query, Options{}, args...);
     }
 
     /*! Initialize the pool

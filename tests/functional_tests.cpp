@@ -73,7 +73,7 @@ auto run_async_test(const T& test, rvalT failValue) {
 TEST(Functional, PingServer) {
 
     auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
-        auto connection = co_await db.getConnection();
+        auto connection = co_await db.getConnection({});
         co_await connection.connection().async_ping(boost::asio::use_awaitable);
         co_return true;
     };
@@ -112,6 +112,7 @@ TEST(Functional, InsertDataRows) {
     auto test = [](Mysqlpool& db) -> boost::asio::awaitable<int64_t> {
         auto res = co_await db.exec(R"(INSERT INTO mysqlpool (name)
             VALUES (?), (?), (?))", "Nusse", "Bugsy", "Kleo");
+        assert(res.has_value());
         co_return res.affected_rows();
     };
 
@@ -154,6 +155,31 @@ TEST(Functional, ClosePool) {
     };
 
     EXPECT_NO_THROW(run_async_test(test, false));
+}
+
+TEST(Functional, TimeZone) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
+        jgaa::mysqlpool::Options opts;
+        opts.locale_name = "UTC";
+
+        auto res = co_await db.exec("SELECT @@session.time_zone");
+        EXPECT_TRUE(res.has_value() && !res.rows().empty());
+        if (res.has_value() && !res.rows().empty()) {
+            const auto zone = res.rows().front().at(0).as_string();
+            EXPECT_NE(zone, opts.locale_name);
+        }
+
+        res = co_await db.exec("SELECT @@session.time_zone", opts);
+        EXPECT_TRUE(res.has_value() && !res.rows().empty());
+        if (res.has_value() && !res.rows().empty()) {
+            const auto zone = res.rows().front().at(0).as_string();
+            EXPECT_EQ(zone, opts.locale_name);
+        }
+        co_return true;
+    };
+
+    run_async_test(test, false);
 }
 
 int main( int argc, char * argv[] )

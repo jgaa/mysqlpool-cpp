@@ -26,13 +26,13 @@ std::string getEnv(const std::string& name, std::string def) {
     return def;
 }
 
-asio::awaitable<Mysqlpool::Handle> Mysqlpool::getConnection(bool throwOnEmpty) {
+asio::awaitable<Mysqlpool::Handle> Mysqlpool::getConnection(const Options& opts) {
     while(true) {
         optional<Handle> handle;
         {
             std::scoped_lock lock{mutex_};
             if (closed_) {
-                if (throwOnEmpty) {
+                if (opts.throw_on_empty_connection) {
                     throw runtime_error{"The db-connection pool is closed."};
                 }
                 co_return Handle{};
@@ -323,6 +323,7 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
     }
 
     connection_->setState(Connection::State::CONNECTING);
+    connection_->setTimeZone({});
     try {
         co_await parent_->connect(connection_->connection_, endpoints, 0, true);
         connection_->setState(Connection::State::CONNECTED);
@@ -355,6 +356,7 @@ void Mysqlpool::Connection::touch() {
     MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " is touched.");
     expires_ = std::chrono::steady_clock::now() + chrono::seconds{parent_.config_.connection_idle_limit_seconds};
 }
+
 
 
 } // namespace
