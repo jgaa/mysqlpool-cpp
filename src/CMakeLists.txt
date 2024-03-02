@@ -27,12 +27,15 @@ if (MYSQLPOOL_LOGDEP)
 endif()
 
 target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-        $<BUILD_INTERFACE:${Boost_LIBRARIES}>
-        $<BUILD_INTERFACE:${stdc++fs}>
-        $<BUILD_INTERFACE:Threads::Threads>
-#        $<BUILD_INTERFACE:ZLIB>
-    )
+    ${Boost_LIBRARIES}
+    #${ZLIB_LIBRARIES}
+    #${OPENSSL_LIBRARIES}
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    ZLIB::ZLIB
+    stdc++fs
+    ${CMAKE_THREAD_LIBS_INIT}
+)
 
 message(STATUS "Components to pack (${PROJECT_NAME}): ${CPACK_COMPONENTS_ALL}")
 

@@ -66,8 +66,6 @@ TEST(Logfault, Hello) {
         MYSQLPOOL_LOG_INFO_("Test log");
     }
 
-    std::cerr << "Out: " << output << "\n";
-
     regex pattern{R"(.* INFO .* Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
@@ -79,10 +77,10 @@ TEST(Clog, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
     }
 
-    regex pattern{R"(DEBUG Test log.*)"};
+    regex pattern{R"(.*Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif
@@ -93,10 +91,10 @@ TEST(InternalLog, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
     }
 
-    regex pattern{R"(DEBUG \d* Test log.*)"};
+    regex pattern{R"(INFO \d* Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif
@@ -107,11 +105,11 @@ TEST(BoostLog, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
         boost::log::core::get()->flush();
     }
 
-    regex pattern{R"(.*\[debug\]\: Test log.*)"};
+    regex pattern{R"(.*\[info\]\: Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif

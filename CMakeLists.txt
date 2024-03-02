@@ -15,7 +15,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(MYSQLPOOL_WITH_TESTS "Enable Tests" ON)
 
-set(MYSQLPOOL_LOGGER "logfault" CACHE STRING "Log system to use. One of 'clog', 'logfault', 'boost' or 'none'")
+set(MYSQLPOOL_LOGGER "logfault" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
 set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable")
 
 set(MYSQLPOOL_DBUSER "MYSQLPOOL_DBUSER" CACHE STRING "Environment variable to get login user name name from")
@@ -107,6 +107,8 @@ add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY
     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
 
+
+
 if (MYSQLPOOL_WITH_TESTS)
     enable_testing()
     find_package(GTest REQUIRED)
@@ -115,7 +117,7 @@ if (MYSQLPOOL_WITH_TESTS)
     # Conan suggests to use 'gtest:gtest' which aslo don't work.
     if (NOT GTEST_LIBRARIES)
         message("GTest: GTEST_LIBRARIES unset. Setting it manually to gtest")
-        set(GTEST_LIBRARIES gtest)
+        set(GTEST_LIBRARIES GTest::gtest)
     endif()
     add_subdirectory(tests)
 endif()
