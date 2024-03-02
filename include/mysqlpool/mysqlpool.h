@@ -310,6 +310,7 @@ public:
         boost::mysql::diagnostics diag;
 
     again:
+        // TODO: Revert the session time zone back to default if opts.locale_name is empty?
         if (!opts.locale_name.empty()
             && !conn.connectionWrapper()->isSameTimeZone(opts.locale_name)) {
 

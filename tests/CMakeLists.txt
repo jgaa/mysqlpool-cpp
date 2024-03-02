@@ -33,6 +33,7 @@ target_link_libraries(unit_tests
 
 add_test(NAME unit_tests COMMAND unit_tests)
 
+message("GTEST_LIBRARIES: ${GTEST_LIBRARIES}")
 
 ####### functional_tests
 

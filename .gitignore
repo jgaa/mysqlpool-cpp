@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# Misc
+*.user
+.venv
+build
+.user
+__pycache__
+.kdev4
+*.pyi
+CMakeUserPresets.json

@@ -108,7 +108,15 @@ set_property(TARGET boost PROPERTY
     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
 
 if (MYSQLPOOL_WITH_TESTS)
+    enable_testing()
     find_package(GTest REQUIRED)
+    # Problem with Conan.
+    # find_package(GTest REQUIRED) does not set GTEST_LIBRARIES.
+    # Conan suggests to use 'gtest:gtest' which aslo don't work.
+    if (NOT GTEST_LIBRARIES)
+        message("GTest: GTEST_LIBRARIES unset. Setting it manually to gtest")
+        set(GTEST_LIBRARIES gtest)
+    endif()
     add_subdirectory(tests)
 endif()
 

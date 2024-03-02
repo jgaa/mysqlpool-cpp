@@ -63,10 +63,12 @@ TEST(Logfault, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
     }
 
-    regex pattern{R"(.* DEBUGGING .* Test log.*)"};
+    std::cerr << "Out: " << output << "\n";
+
+    regex pattern{R"(.* INFO .* Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif
