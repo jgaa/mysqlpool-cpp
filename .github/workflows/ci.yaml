@@ -19,7 +19,9 @@ jobs:
           - os: windows-latest
             compiler: msvc
           - os: macos-latest
-            compiler: clang
+            compiler: gcc
+          # - os: macos-latest
+          #   compiler: clang
 
     steps:
       - name: Checkout code
