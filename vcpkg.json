@@ -11,6 +11,7 @@
     "boost-json",
     "boost-log",
     "zlib",
-    "openssl"
+    "openssl",
+    "gtest"
   ]
 }
