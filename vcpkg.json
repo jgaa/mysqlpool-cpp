@@ -4,11 +4,13 @@
   "license": "GPL-3.0",
   "dependencies": [
     "boost-system",
-    "boost-program-options",
-    "boost-serialization",
     "boost-context",
     "boost-coroutine",
     "boost-asio",
-    "boost-property-tree"
+    "boost-chrono",
+    "boost-json",
+    "boost-log",
+    "zlib",
+    "openssl"
   ]
 }
