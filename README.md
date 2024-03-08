@@ -1,5 +1,7 @@
 # mysqlpool-cpp
 
+[![CI](https://github.com/jgaa/mysqlpool-cpp/actions/workflows/ci.yaml/badge.svg)](https://github.com/jgaa/mysqlpool-cpp/actions/workflows/ci.yaml)
+
 Lightweight async connection-pool library, built on top of boost.mysql.
 
 The library require C++20 and use C++20 coroutines.
