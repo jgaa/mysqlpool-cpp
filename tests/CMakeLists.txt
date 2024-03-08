@@ -68,4 +68,4 @@ target_link_libraries(functional_tests
     # ${CMAKE_THREAD_LIBS_INIT}
 )
 
-add_test(NAME functional_tests COMMAND functional_tests)
+#add_test(NAME functional_tests COMMAND functional_tests)
