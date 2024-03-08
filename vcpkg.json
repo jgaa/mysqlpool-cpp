@@ -10,6 +10,7 @@
     "boost-chrono",
     "boost-json",
     "boost-log",
+    "boost-mysql",
     "zlib",
     "openssl",
     "gtest"
