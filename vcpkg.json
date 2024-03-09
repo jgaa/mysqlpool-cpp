@@ -1,0 +1,19 @@
+{
+  "name": "shinysocks",
+
+  "license": "GPL-3.0",
+  "dependencies": [
+    "boost-system",
+    "boost-context",
+    "boost-coroutine",
+    "boost-asio",
+    "boost-chrono",
+    "boost-json",
+    "boost-log",
+    "boost-mysql",
+    "boost-uuid",
+    "zlib",
+    "openssl",
+    "gtest"
+  ]
+}

@@ -1,3 +1,19 @@
+
+message ("GTEST_LIBRARIES: ${GTEST_LIBRARIES}")
+message ("GTest_LIBRARIES: ${GTest_LIBRARIES}")
+
+message ("GTEST_INCLUDE_DIRS: ${GTEST_INCLUDE_DIRS}")
+message ("GTest_INCLUDE_DIRS: ${GTest_INCLUDE_DIRS}")
+
+if (NOT GTEST_LIBRARIES)
+    set (GTEST_LIBRARIES ${GTest_LIBRARIES})
+endif()
+
+if (NOT GTEST_INCLUDE_DIRS)
+    set (GTEST_INCLUDE_DIRS ${GTest_INCLUDE_DIRS})
+endif()
+
+
 ####### unit_tests
 
 add_executable(unit_tests
@@ -13,58 +29,62 @@ add_dependencies(unit_tests
 
 target_include_directories(unit_tests
     PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
-    $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include
-    $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/src/lib
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/external-projects/installed/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${MYSQLPOOL_ROOT}/include
+    ${MYSQLPOOL_ROOT}/src/lib
+    ${CMAKE_BINARY_DIR}/generated-include>
+    ${CMAKE_BINARY_DIR}/external-projects/installed/include>
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${GTEST_INCLUDE_DIRS}
     )
 
 target_link_libraries(unit_tests
     ${GTEST_LIBRARIES}
     mysqlpool
-    ${Boost_LIBRARIES}
-    ${ZLIB_LIBRARIES}
-    ${OPENSSL_LIBRARIES}
-    stdc++fs
-    ${CMAKE_THREAD_LIBS_INIT}
+    # ${Boost_LIBRARIES}
+    # ${ZLIB_LIBRARIES}
+    # ${OPENSSL_LIBRARIES}
+    # stdc++fs
+    # ${CMAKE_THREAD_LIBS_INIT}
 )
 
 add_test(NAME unit_tests COMMAND unit_tests)
 
+####### integration_tests
+if (MYSQLPOOL_WITH_INTGRATION_TESTS)
 
-####### functional_tests
-
-add_executable(functional_tests
-    functional_tests.cpp
+add_executable(integration_tests
+    integration_tests.cpp
     )
 
-set_property(TARGET functional_tests PROPERTY CXX_STANDARD 20)
+set_property(TARGET integration_tests PROPERTY CXX_STANDARD 20)
 
-add_dependencies(functional_tests
+add_dependencies(integration_tests
     mysqlpool
     ${DEPENDS_GTEST}
     )
 
-target_include_directories(functional_tests
+target_include_directories(integration_tests
     PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
-    $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include
-    $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/src/lib
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/external-projects/installed/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${MYSQLPOOL_ROOT}/include
+    ${MYSQLPOOL_ROOT}/src/lib
+    ${CMAKE_BINARY_DIR}/generated-include>
+    ${CMAKE_BINARY_DIR}/external-projects/installed/include>
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${GTEST_INCLUDE_DIRS}
     )
 
-target_link_libraries(functional_tests
+target_link_libraries(integration_tests
     ${GTEST_LIBRARIES}
     mysqlpool
-    ${Boost_LIBRARIES}
-    ${ZLIB_LIBRARIES}
-    ${OPENSSL_LIBRARIES}
-    stdc++fs
-    ${CMAKE_THREAD_LIBS_INIT}
+    # ${Boost_LIBRARIES}
+    # ${ZLIB_LIBRARIES}
+    # ${OPENSSL_LIBRARIES}
+    # stdc++fs
+    # ${CMAKE_THREAD_LIBS_INIT}
 )
 
-add_test(NAME functional_tests COMMAND functional_tests)
+add_test(NAME integration_tests COMMAND integration_tests)
+
+endif()

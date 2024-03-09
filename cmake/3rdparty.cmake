@@ -36,6 +36,7 @@ if (MYSQLPOOL_LOG_WITH_LOGFAULT)
                 -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
                 -DCMAKE_GENERATOR='${CMAKE_GENERATOR}'
                 -DCMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}'
+                -DLOGFAULT_BUILD_TESTS=OFF
         )
 
     endif()

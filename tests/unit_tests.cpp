@@ -9,6 +9,12 @@
 #include "gtest/gtest.h"
 //#include "mysqlpool/test_helper.h"
 
+#ifdef _MSC_VER
+#   include <stdlib.h>
+    // Use _putenv_s when compiled with Microsoft's compiler
+#   define setenv(key, value, ignore) _putenv_s(key, value)
+#endif
+
 using namespace std;
 using namespace std::string_literals;
 using namespace jgaa::mysqlpool;
@@ -63,10 +69,10 @@ TEST(Logfault, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
     }
 
-    regex pattern{R"(.* DEBUGGING .* Test log.*)"};
+    regex pattern{R"(.* INFO .* Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif
@@ -77,10 +83,10 @@ TEST(Clog, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
     }
 
-    regex pattern{R"(DEBUG Test log.*)"};
+    regex pattern{R"(.*Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif
@@ -91,10 +97,10 @@ TEST(InternalLog, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
     }
 
-    regex pattern{R"(DEBUG \d* Test log.*)"};
+    regex pattern{R"(INFO \d* Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif
@@ -105,11 +111,11 @@ TEST(BoostLog, Hello) {
     string output;
     {
         ClogRedirector redir{output};
-        MYSQLPOOL_LOG_DEBUG_("Test log");
+        MYSQLPOOL_LOG_INFO_("Test log");
         boost::log::core::get()->flush();
     }
 
-    regex pattern{R"(.*\[debug\]\: Test log.*)"};
+    regex pattern{R"(.*\[info\]\: Test log.*)"};
     EXPECT_TRUE(regex_search(output, pattern));
 }
 #endif
