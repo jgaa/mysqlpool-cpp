@@ -11,10 +11,10 @@ Under initial implementation. Not ready for adaption yet.
 
 ## Supported platforms
 
-- Linux with g++-13
-- Linux with clang-17
-- Windows with msvc
-- MacOS with g++-13 (Apples outdated clang compiler will not do)
+- Linux with g++ 13
+- Linux with clang 17
+- Windows with msvc 14
+- MacOS with g++ 13 (Apples outdated clang compiler will not do)
 
 ## Introduction
 

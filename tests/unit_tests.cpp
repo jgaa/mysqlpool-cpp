@@ -9,6 +9,12 @@
 #include "gtest/gtest.h"
 //#include "mysqlpool/test_helper.h"
 
+#ifdef _MSC_VER
+#   include <stdlib.h>
+    // Use _putenv_s when compiled with Microsoft's compiler
+#   define setenv(key, value, ignore) _putenv_s(key, value)
+#endif
+
 using namespace std;
 using namespace std::string_literals;
 using namespace jgaa::mysqlpool;
