@@ -35,20 +35,21 @@ add_test(NAME unit_tests COMMAND unit_tests)
 
 message("GTEST_LIBRARIES: ${GTEST_LIBRARIES}")
 
-####### functional_tests
+####### integration_tests
+if (MYSQLPOOL_WITH_INTGRATION_TESTS)
 
-add_executable(functional_tests
-    functional_tests.cpp
+add_executable(integration_tests
+    integration_tests.cpp
     )
 
-set_property(TARGET functional_tests PROPERTY CXX_STANDARD 20)
+set_property(TARGET integration_tests PROPERTY CXX_STANDARD 20)
 
-add_dependencies(functional_tests
+add_dependencies(integration_tests
     mysqlpool
     ${DEPENDS_GTEST}
     )
 
-target_include_directories(functional_tests
+target_include_directories(integration_tests
     PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}
     $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include
@@ -58,7 +59,7 @@ target_include_directories(functional_tests
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     )
 
-target_link_libraries(functional_tests
+target_link_libraries(integration_tests
     ${GTEST_LIBRARIES}
     mysqlpool
     # ${Boost_LIBRARIES}
@@ -68,4 +69,6 @@ target_link_libraries(functional_tests
     # ${CMAKE_THREAD_LIBS_INIT}
 )
 
-#add_test(NAME functional_tests COMMAND functional_tests)
+add_test(NAME integration_tests COMMAND integration_tests)
+
+endif()

@@ -14,6 +14,7 @@ set(MYSQLPOOL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(MYSQLPOOL_WITH_TESTS "Enable Tests" ON)
+option(MYSQLPOOL_WITH_INTGRATION_TESTS "Enable Integretion Tests" OFF)
 
 set(MYSQLPOOL_LOGGER "logfault" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
 set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable")
