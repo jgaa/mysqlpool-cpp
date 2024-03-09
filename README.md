@@ -9,6 +9,13 @@ The library require C++20 and use C++20 coroutines.
 ## Status
 Under initial implementation. Not ready for adaption yet.
 
+## Supported platforms
+
+- Linux with g++-13
+- Linux with clang-17
+- Windows with msvc
+- MacOS with g++-13 (Apples outdated clang compiler will not do)
+
 ## Introduction
 
 The mysql library *mysql* is a low-level database driver for mysql/mariadb
