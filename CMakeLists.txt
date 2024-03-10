@@ -15,6 +15,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 option(MYSQLPOOL_WITH_TESTS "Enable Tests" ON)
 option(MYSQLPOOL_WITH_INTGRATION_TESTS "Enable Integretion Tests" OFF)
+option(MYSQLPOOL_WITH_EXAMPLES "Compile examples" ON)
 
 set(MYSQLPOOL_LOGGER "clog" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
 set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable")
@@ -101,6 +102,7 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     context
     chrono
     json
+    program_options
     ${BOOST_LOG_DEP}
     )
 
@@ -108,7 +110,9 @@ add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY
     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
 
-
+if (MYSQLPOOL_WITH_EXAMPLES)
+    add_subdirectory(examples/simple)
+endif()
 
 if (MYSQLPOOL_WITH_TESTS)
     enable_testing()

@@ -12,6 +12,7 @@
     "boost-log",
     "boost-mysql",
     "boost-uuid",
+    "boost-program_options"
     "zlib",
     "openssl",
     "gtest"
