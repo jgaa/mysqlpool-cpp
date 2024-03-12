@@ -1,5 +1,7 @@
 project(mysqlpool VERSION ${MYSQLPOOL_VERSION} LANGUAGES CXX)
 
+message("src: LOGFAULT_INCLUDEDIR=${LOGFAULT_INCLUDEDIR}")
+
 add_library(${PROJECT_NAME}
     ${MYSQLPOOL_ROOT}/include/mysqlpool/mysqlpool.h
     ${MYSQLPOOL_ROOT}/include/mysqlpool/logging.h

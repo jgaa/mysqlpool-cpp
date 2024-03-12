@@ -1,4 +1,6 @@
 
+message("tests: LOGFAULT_INCLUDEDIR=${LOGFAULT_INCLUDEDIR}")
+
 message ("GTEST_LIBRARIES: ${GTEST_LIBRARIES}")
 message ("GTest_LIBRARIES: ${GTest_LIBRARIES}")
 
