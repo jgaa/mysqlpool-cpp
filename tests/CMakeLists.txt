@@ -36,6 +36,7 @@ target_include_directories(unit_tests
     ${CMAKE_BINARY_DIR}/external-projects/installed/include>
     ${CMAKE_CURRENT_BINARY_DIR}
     ${GTEST_INCLUDE_DIRS}
+    ${LOGFAULT_INCLUDEDIR}
     )
 
 target_link_libraries(unit_tests
@@ -73,6 +74,7 @@ target_include_directories(integration_tests
     ${CMAKE_BINARY_DIR}/external-projects/installed/include>
     ${CMAKE_CURRENT_BINARY_DIR}
     ${GTEST_INCLUDE_DIRS}
+    ${LOGFAULT_INCLUDEDIR}
     )
 
 target_link_libraries(integration_tests

@@ -22,7 +22,7 @@ if (MYSQLPOOL_LOG_WITH_LOGFAULT)
     if (NOT LOGFAULT_DIR STREQUAL "LOGFAULT_DIR-NOTFOUND" )
         message ("Using existing logfault at: ${LOGFAULT_DIR}")
         add_library(logfault INTERFACE IMPORTED)
-
+        set(LOGFAULT_INCLUDEDIR ${LOGFAULT_DIR} PARENT_SCOPE)
     else()
         message ("Embedding logfault header only library")
         set(MYSQLPOOL_LOGDEP ${RESTC_CPP_EXTERNAL_DEPS} embeddedLogfault)
