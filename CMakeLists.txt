@@ -110,6 +110,8 @@ add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY
     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
 
+include(cmake/3rdparty.cmake)
+
 if (MYSQLPOOL_WITH_EXAMPLES)
     add_subdirectory(examples/simple)
 endif()
@@ -126,8 +128,6 @@ if (MYSQLPOOL_WITH_TESTS)
     endif()
     add_subdirectory(tests)
 endif()
-
-include(cmake/3rdparty.cmake)
 
 add_subdirectory(src)
 
