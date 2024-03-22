@@ -39,7 +39,7 @@ a new connection for each request - but this would give some overhead as it
 takes time to set up a connections - especially if you use TLS. Another
 challenge is error handling. Each request in a real application require
 error handling. For many SQL queries you will first create a prepared
-statement so you can *bond* the arguments to a the query, and then
+statement so you can *bind* the arguments to the query, and then
 execute the prepared statement. Both steps require careful error handling
 and reporting of errors.
 
@@ -56,7 +56,7 @@ One less wheel to re-invent for everybody ;)
 This library, **mysylpool-cpp** is a higher level library that provide a connection-pool and
 async execution of queries to the database server. Unlike Boost.mysql, it
 supports C++20 coroutines only. That's what *I* need, and I don't want to
-add the overhead in development time and time write tests, to use the full
+add the overhead in development time and time writing tests, to use the full
 flexibility of the asio completion handlers. May be, if there is enough
 complaints, I will add this in the future. Or maybe someone will offer a PR
 with this. Until then, the pool is C++20 async coroutines only. That said,
@@ -64,13 +64,23 @@ there is nothing to prevent you from using the pool to get a connection,
 and then call the Boost.mysql methods directly with any kind of continuation you
 need. However, you will have to deal with the error handling yourself.
 
-## Errror hangling
+## Features
+ - Dynamic number of connections in the pool. You specify the minimum and maximum number of connections, and the idle time before a connection is closed.
+ - Semi automatic error handling, where recoverable errors can be retried automatically. If you use this, `co_await pool.exec(...)` will return when the query finally succeeds, or the retry count reach a configurable threshold.
+ - Requests are queued if all the available connections are in use. The pool will open more connections in the background up to the limit.
+ - The high level `exec` method handles connection allocation,
+ - All SQL queries can be logged, include the arguments to prepared statements.
+ - Time Zone can be specified for a query. The pool will then ensure that the connection
+ used for that request use the specified time zone. Useful for servers that handle
+ requests for users from different time zones.
+
+## Error handling
 
 Mysqlpool-cpp will throw exceptions on unrecoverable errors. For recoverable
 errors you can choose if you want it to try to re-connect to the server. It's
-a common problem with a connection pool like this that connections are broken
+a common problem with a connection pool like this that connections are broken;
 may be because the network fails, may be because the database server restarted.
-In a world full of containers that start in random order and sone tines fail,
+In a world full of containers that start in random order and some tines fail,
 it is useful to have the possibility to re-connect.
 
 In my project, my server will send a query to the database when it starts up,
@@ -85,7 +95,7 @@ It can also log all queries, including the data sent to prepared statements. Thi
 is quite useful during development. The log for a prepared statement may look like:
 
 ```
-024-03-19 15:52:21.561 UTC TRACE 9 Executing statement SQL query: SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date | args: dd2068f6-9cbb-11ee-bfc9-f78040cadf6b, 2024, 12
+1024-03-19 15:52:21.561 UTC TRACE 9 Executing statement SQL query: SELECT date, user, color, ISNULL(notes), ISNULL(report) FROM day WHERE user=? AND YEAR(date)=? AND MONTH(date)=? ORDER BY date | args: dd2068f6-9cbb-11ee-bfc9-f78040cadf6b, 2024, 12
 ```
 
 Logging in C++ is something that many people have strong opinions about. My opinion is
@@ -98,7 +108,7 @@ that it must be possible. Mysqlpool-cpp offer several compile time alternatives.
 - **boost** Uses Boost.log, via `BOOST_LOG_TRIVIAL`. This require that this logger is used project wide.
 - **none** Does not log anything.
 
-You can specify your chosen logger via the `MYSQLPOOL_LOGGER` cmake variable. For example `cmake .. -CMYSQLPOOL_LOGGER=boost`.
+You can specify your chosen logger via the `MYSQLPOOL_LOGGER` CMake variable. For example `cmake .. -CMYSQLPOOL_LOGGER=boost`.
 
 **Log levels**
 When you develop your code, trace level logging can be useful. For example, the logging of SQL statements
