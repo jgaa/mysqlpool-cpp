@@ -14,7 +14,7 @@ namespace mp = jgaa::mysqlpool;
 boost::asio::awaitable<void> ping_the_db_server(mp::Mysqlpool& pool) {
 
     // Lets get an actual connection to the database
-    // hande is a Handle to a Connection.
+    // handle is a Handle to a Connection.
     // It will automatically release the connection when it goes out of scope.
     auto handle = co_await pool.getConnection();
 
@@ -92,7 +92,7 @@ void run_examples(const mp::DbConfig& config){
 
     // Start a coroutine context, and work in it until we are done.
     auto res = boost::asio::co_spawn(ctx, [&]() -> boost::asio::awaitable<void> {
-        // Initialzie the connection pool.
+        // Initialize the connection pool.
         // It will connect to the database and keep a pool of connections.
         co_await pool.init();
 
