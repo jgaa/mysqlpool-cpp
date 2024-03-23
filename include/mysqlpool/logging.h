@@ -49,7 +49,7 @@ private:
 
 /*! Internal logger class
  *
- *  This is a verty simple internal log handler that is designd to
+ *  This is a very simple internal log handler that is designd to
  *  forward log events to whatever log framework you use in your
  *  application.
  *
@@ -126,7 +126,7 @@ inline void MysqlpoolTestStartLogger(const std::string& level = "info") {
 
     jgaa::mysqlpool::Logger::Instance().SetHandler([](jgaa::mysqlpool::LogLevel level,
                                              const std::string& msg) {
-        static const auto levels = std::to_array<std::string_view>({"NONE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"});
+        static constexpr auto levels = std::to_array<std::string_view>({"NONE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"});
 
         const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 

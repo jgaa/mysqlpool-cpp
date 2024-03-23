@@ -102,13 +102,37 @@ Logging in C++ is something that many people have strong opinions about. My opin
 that it must be possible. Mysqlpool-cpp offer several compile time alternatives.
 
 **Loggers**
-- **clog** Just log to std::clog with simple formatting.
+- **clog** Just log to std::clog with simple formatting. Note that this logger does not support any runtime log-level. It will use the log-level set in `MYSQLPOOL_LOG_LEVEL_STR`.
 - **internal** Allows you to forward the log events from the library to whatever log system you use.
 - **logfault** Use the [logfault](https://github.com/jgaa/logfault) logger. This require that this logger is used project wide, which is unusual. Except for my own projects.
 - **boost** Uses Boost.log, via `BOOST_LOG_TRIVIAL`. This require that this logger is used project wide.
 - **none** Does not log anything.
 
 You can specify your chosen logger via the `MYSQLPOOL_LOGGER` CMake variable. For example `cmake .. -CMYSQLPOOL_LOGGER=boost`.
+
+If you use the **internal** logger, here is an example on how to use it. In the lamda
+passed to SetHandler, you can bridge it to the logger you use in your application:
+
+```C++
+void BridgeLogger(jgaa::mysqlpool::LogLevel llevel = jgaa::mysqlpool::LogLevel::INFO) {
+
+    jgaa::mysqlpool::Logger::Instance().SetLogLevel(llevel);
+
+    jgaa::mysqlpool::Logger::Instance().SetHandler([](jgaa::mysqlpool::LogLevel level,
+                                             const std::string& msg) {
+        static constexpr auto levels = std::to_array<std::string_view>({"NONE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"});
+
+        const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+
+        std::clog << std::put_time(std::localtime(&now), "%c") << ' '
+                  << levels.at(static_cast<size_t>(level))
+                  << ' ' << std::this_thread::get_id() << ' '
+                  << msg << std::endl;
+    });
+
+    MYSQLPOOL_LOG_INFO_("Logging on level " << level << ". Boost version is " << BOOST_LIB_VERSION);
+}
+```
 
 **Log levels**
 When you develop your code, trace level logging can be useful. For example, the logging of SQL statements

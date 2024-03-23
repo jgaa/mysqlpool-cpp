@@ -218,7 +218,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
 
         switch(ec.value()) {
         case static_cast<int>(mysql::common_server_errc::er_dup_entry):
-            throw db_err_exists{ec};
+            ::boost::throw_exception(db_err_exists{ec}, BOOST_CURRENT_LOCATION);
 
         case boost::asio::error::eof:
         case boost::asio::error::broken_pipe:
@@ -230,7 +230,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
 
         default:
             MYSQLPOOL_LOG_DEBUG_("The error is non-recoverable");
-            throw db_err{ec};
+            ::boost::throw_exception(db_err{ec}, BOOST_CURRENT_LOCATION);
         }
     }
     return true;
@@ -331,7 +331,7 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
     if (endpoints.empty()) {
         MYSQLPOOL_LOG_ERROR_("Failed to resolve hostname "
                              << parent_->config_.host << " for the database server");
-        throw resolve_failed{"Failed to resolve database hostname"};
+        ::boost::throw_exception(resolve_failed{"Failed to resolve database hostname"}, BOOST_CURRENT_LOCATION);
     }
 
     connection_->setState(Connection::State::CONNECTING);

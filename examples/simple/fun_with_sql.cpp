@@ -78,6 +78,43 @@ boost::asio::awaitable<void> get_db_version(mp::Mysqlpool& pool) {
     co_return;
 }
 
+boost::asio::awaitable<void> add_and_query_data(mp::Mysqlpool& pool) {
+    // Now, lets create a new table, insert some data, and query it.
+
+    co_await pool.exec("GAKK, CREATE OR REPLACE TABLE test_table (id INT, name TEXT)");
+
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 1, "Alice");
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 2, "Bob");
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 3, "Charlie");
+
+    cout << "Data inserted." << endl;
+    auto res = co_await pool.exec("SELECT * FROM test_table");
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+    }
+
+    co_await pool.exec("UPDATE test_table SET name = ? WHERE id = ?", "David", 2);
+
+    cout << "Data updated." << endl;
+    res = co_await pool.exec("SELECT * FROM test_table");
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+    }
+
+    // Now, lets insert another row, but this tme we will use a tuple to carry the data
+    auto data = make_tuple(4, "Eve"s);
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", data);
+
+    cout << "More data inserted ." << endl;
+    res = co_await pool.exec("SELECT * FROM test_table WHERE id = ?", 4);
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+    }
+
+    co_await pool.exec("DROP TABLE test_table");
+    co_return;
+}
+
 // Entry point from main()
 void run_examples(const mp::DbConfig& config){
 
@@ -94,15 +131,27 @@ void run_examples(const mp::DbConfig& config){
     auto res = boost::asio::co_spawn(ctx, [&]() -> boost::asio::awaitable<void> {
         // Initialize the connection pool.
         // It will connect to the database and keep a pool of connections.
-        co_await pool.init();
+        try {
+            co_await pool.init();
 
-        // Run trough the examples
-        co_await ping_the_db_server(pool);
-        co_await get_db_version_using_boost_mysql(pool);
-        co_await get_db_version(pool);
+            // Run trough the examples
+            co_await ping_the_db_server(pool);
+            co_await get_db_version_using_boost_mysql(pool);
+            co_await get_db_version(pool);
+            co_await add_and_query_data(pool);
 
-        // Gracefully shut down the connection-pool.
-        co_await pool.close();
+            // Gracefully shut down the connection-pool.
+            co_await pool.close();
+        } catch (const exception& ex) {
+            MYSQLPOOL_LOG_DEBUG_("Caught exception in coroutine: " << ex.what());
+
+            // The main thread will not be released to deal with the exception
+            // until the asio context stops.
+            // Normally that happens in `pool.close()`. But if there is an exception,
+            // that is not called or completed.
+            ctx.stop();
+            throw;
+        }
 
         }, boost::asio::use_future);
 
