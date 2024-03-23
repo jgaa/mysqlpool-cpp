@@ -20,26 +20,4 @@ openssl x509 -req -in server-req.pem -days 365000 -CA ca.pem -CAkey ca-key.pem -
 
 openssl verify -CAfile ca.pem server-cert.pem
 
-# # Define the subject details for the certificate
-# root_subj="/C=EU/O=The Last Viking LTD/OU=Root CA/CN=rootca.localhost"
-# server_subj="/C=EU/O=The Last Viking LTD/CN=localhost"
-#
-# # Generate a new private key for the root certificate
-# openssl genrsa -out root-key.pem 2048
-#
-# # Generate a self-signed root certificate
-# openssl req -x509 -new -nodes -key root-key.pem -sha256 -days 1024 -out root-cert.pem -subj "$root_subj"
-#
-# # Generate a new private key for the server certificate
-# openssl genrsa -out server-key.pem 2048
-#
-# # Generate a Certificate Signing Request (CSR) for the server certificate
-# openssl req -new -key server-key.pem -out server.csr -subj "$server_subj"
-#
-# # Generate the server certificate signed by the root certificate
-# openssl x509 -req -in server.csr -CA root-cert.pem -CAkey root-key.pem -CAcreateserial -out server-cert.pem -days 365 -sha256
-#
-# # Export the public key of the root certificate to ca.pem
-# openssl x509 -pubkey -noout -in root-cert.pem > ca.pem
-
 echo "Done";
