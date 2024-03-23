@@ -102,13 +102,37 @@ Logging in C++ is something that many people have strong opinions about. My opin
 that it must be possible. Mysqlpool-cpp offer several compile time alternatives.
 
 **Loggers**
-- **clog** Just log to std::clog with simple formatting.
+- **clog** Just log to std::clog with simple formatting. Note that this logger does not support any runtime log-level. It will use the log-level set in `MYSQLPOOL_LOG_LEVEL_STR`.
 - **internal** Allows you to forward the log events from the library to whatever log system you use.
 - **logfault** Use the [logfault](https://github.com/jgaa/logfault) logger. This require that this logger is used project wide, which is unusual. Except for my own projects.
 - **boost** Uses Boost.log, via `BOOST_LOG_TRIVIAL`. This require that this logger is used project wide.
 - **none** Does not log anything.
 
 You can specify your chosen logger via the `MYSQLPOOL_LOGGER` CMake variable. For example `cmake .. -CMYSQLPOOL_LOGGER=boost`.
+
+If you use the **internal** logger, here is an example on how to use it. In the lamda
+passed to SetHandler, you can bridge it to the logger you use in your application:
+
+```C++
+void BridgeLogger(jgaa::mysqlpool::LogLevel llevel = jgaa::mysqlpool::LogLevel::INFO) {
+
+    jgaa::mysqlpool::Logger::Instance().SetLogLevel(llevel);
+
+    jgaa::mysqlpool::Logger::Instance().SetHandler([](jgaa::mysqlpool::LogLevel level,
+                                             const std::string& msg) {
+        static constexpr auto levels = std::to_array<std::string_view>({"NONE", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"});
+
+        const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+
+        std::clog << std::put_time(std::localtime(&now), "%c") << ' '
+                  << levels.at(static_cast<size_t>(level))
+                  << ' ' << std::this_thread::get_id() << ' '
+                  << msg << std::endl;
+    });
+
+    MYSQLPOOL_LOG_INFO_("Logging on level " << level << ". Boost version is " << BOOST_LIB_VERSION);
+}
+```
 
 **Log levels**
 When you develop your code, trace level logging can be useful. For example, the logging of SQL statements
@@ -118,6 +142,29 @@ can set a minimum log level at compile time. This is done with the CMake variabl
 For example: `cmake .. -CMYSQLPOOL_LOG_LEVEL_STR=info` will remove all trace and debug messages from
 the code. Even if you run your application with trace log level, mysqlpool-cpp will only show messages
 with level **info**, **warning** and **error**.
+
+## CMake options and variables 
+| name | type | explanation |
+|------|------|-------------|
+| DEFAULT_MYSQLPOOL_DATABASE | string | Default database name |
+| DEFAULT_MYSQLPOOL_DBPASSW | string | Default db password |
+| DEFAULT_MYSQLPOOL_DBUSER | string | Default db user |
+| DEFAULT_MYSQLPOOL_HOST | string | Default host for the server | 
+| DEFAULT_MYSQLPOOL_PORT | string | Default port to the server |
+| DEFAULT_MYSQLPOOL_TLS_MODE | string | TLS requirements |
+| LOGFAULT_DIR | string | Path to the Logfault header only library. If used, CMake will not install it from *cmake/3rdparty.cmake*" |
+| MYSQLPOOL_DBHOST | string | Environment variable to get the dbservers hostname or IP address from |
+| MYSQLPOOL_DBPASSW | string | Environment variable to get user login password from. |
+| MYSQLPOOL_DBPORT | string | Environment variable to get the dbservers port number from |
+| MYSQLPOOL_DBUSER | string | Environment variable to get login user name name from. |
+| MYSQLPOOL_DB_TLS_MODE | string | Environment variable to get the TLS mode from . One of: 'disable', 'enable', 'require' |
+| MYSQLPOOL_EMBEDDED | bool | Tells CMake not to install dependencies from *cmake/3rdparty.cmake* |
+| MYSQLPOOL_LOGGER | string | Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'. |
+| MYSQLPOOL_LOG_LEVEL_STR | string | Minimum log level to enable. Minimum log level to enable. One of 'none', error', 'warn', 'info', 'debug', 'trace'. |
+| MYSQLPOOL_WITH_CONAN | bool | Tells CMake that conan is in charge." |
+| MYSQLPOOL_WITH_EXAMPLES | bool | Builds the example |
+| MYSQLPOOL_WITH_INTGRATION_TESTS | bool | Enables integration tests |
+| MYSQLPOOL_WITH_TESTS | bool | Enables unit tests |
 
 ## Use
 

@@ -4,11 +4,14 @@ project(simple_sql_app
     LANGUAGES CXX
 )
 
+message("examples: LOGFAULT_INCLUDEDIR=${LOGFAULT_INCLUDEDIR}")
+
 add_executable(${PROJECT_NAME} main.cpp fun_with_sql.cpp)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 target_link_libraries(${PROJECT_NAME} mysqlpool)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_INCLUDE_PATH}
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
@@ -17,5 +20,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     $Boost_INCLUDE_DIR
+    ${LOGFAULT_INCLUDEDIR}
     )
 

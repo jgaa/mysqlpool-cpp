@@ -48,8 +48,8 @@ TEST(UnitConfig, EnvVars) {
     const auto used_passwd = "secret"s;
     const auto used_db = "mysql"s;
 
-    setenv(MYSQLPOOL_HOST, used_host.c_str(), 1);
-    setenv(MYSQLPOOL_PORT, used_port.c_str(), 1);
+    setenv(MYSQLPOOL_DBHOST, used_host.c_str(), 1);
+    setenv(MYSQLPOOL_DBPORT, used_port.c_str(), 1);
     setenv(MYSQLPOOL_DBUSER, used_user.c_str(), 1);
     setenv(MYSQLPOOL_DBPASSW, used_passwd.c_str(), 1);
     setenv(MYSQLPOOL_DATABASE, used_db.c_str(), 1);

@@ -57,8 +57,7 @@ asio::awaitable<Mysqlpool::Handle> Mysqlpool::getConnection(const Options& opts)
                 // See if we can open more connections
                 if (!handle && config_.max_connections > connections_.size()) {
                     MYSQLPOOL_LOG_DEBUG_("Mysqlpool::getConnection: The pool is full. Opening a new connection.");
-                    mysql::tcp_connection conn{ctx_.get_executor()};
-                    connections_.emplace_back(std::make_unique<Connection>(*this, std::move(conn)));
+                    connections_.emplace_back(std::make_unique<Connection>(*this));
                     handle.emplace(this, &*connections_.back());
                 }
             }
@@ -192,10 +191,10 @@ boost::asio::awaitable<void> Mysqlpool::init() {
     MYSQLPOOL_LOG_DEBUG_("Mysqlpool::init Opening " << initial_connections << " connections.");
     for(size_t i = 0; i < initial_connections; ++i) {
         try {
-            mysql::tcp_connection conn{ctx_.get_executor()};
-            co_await connect(conn, endpoints, 0, true);
-            connections_.emplace_back(make_unique<Connection>(*this, std::move(conn)));
-            connections_.back()->setState(Connection::State::CONNECTED);
+            auto conn = make_unique<Connection>(*this);
+            co_await connect(conn->connection_, endpoints, 0, true);
+            conn->setState(Connection::State::CONNECTED);
+            connections_.emplace_back(std::move(conn));
         } catch (const std::exception& ex) {
             MYSQLPOOL_LOG_WARN_("Mysqlpool::init Failed to open initial connection: " << ex.what());
         }
@@ -219,7 +218,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
 
         switch(ec.value()) {
         case static_cast<int>(mysql::common_server_errc::er_dup_entry):
-            throw db_err_exists{ec};
+            ::boost::throw_exception(db_err_exists{ec}, BOOST_CURRENT_LOCATION);
 
         case boost::asio::error::eof:
         case boost::asio::error::broken_pipe:
@@ -231,7 +230,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
 
         default:
             MYSQLPOOL_LOG_DEBUG_("The error is non-recoverable");
-            throw db_err{ec};
+            ::boost::throw_exception(db_err{ec}, BOOST_CURRENT_LOCATION);
         }
     }
     return true;
@@ -288,6 +287,19 @@ void Mysqlpool::release(Handle &h) noexcept {
     semaphore_.cancel_one(ec);
 }
 
+boost::mysql::ssl_mode Mysqlpool::sslMode() const
+{
+    if (config_.ssl_mode == "disable") {
+        return boost::mysql::ssl_mode::disable;
+    } else if (config_.ssl_mode == "enable") {
+        return boost::mysql::ssl_mode::enable;
+    } else if (config_.ssl_mode == "require") {
+        return boost::mysql::ssl_mode::require;
+    }
+
+    MYSQLPOOL_LOG_WARN_("Unknown SSL mode: " << config_.ssl_mode);
+    return boost::mysql::ssl_mode::require;
+}
 
 string Mysqlpool::dbUser() const
 {
@@ -319,7 +331,7 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
     if (endpoints.empty()) {
         MYSQLPOOL_LOG_ERROR_("Failed to resolve hostname "
                              << parent_->config_.host << " for the database server");
-        throw resolve_failed{"Failed to resolve database hostname"};
+        ::boost::throw_exception(resolve_failed{"Failed to resolve database hostname"}, BOOST_CURRENT_LOCATION);
     }
 
     connection_->setState(Connection::State::CONNECTING);
@@ -335,8 +347,9 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
     co_return;
 }
 
-Mysqlpool::Connection::Connection(Mysqlpool &parent, boost::mysql::tcp_connection &&conn)
-    : connection_{std::move(conn)}, parent_{parent} {
+Mysqlpool::Connection::Connection(Mysqlpool &parent)
+    : parent_{parent}, connection_{parent.ctx_.get_executor(), ssl_ctx_}{
+
     MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " is being costructed");
     touch();
 }

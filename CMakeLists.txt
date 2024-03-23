@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED MYSQLPOOL_VERSION)
-    set(MYSQLPOOL_VERSION 0.0.1)
+    set(MYSQLPOOL_VERSION 0.0.2)
 endif()
 
 project(mysqlpool-cpp
@@ -19,19 +19,21 @@ option(MYSQLPOOL_WITH_EXAMPLES "Compile examples" ON)
 option(MYSQLPOOL_EMBEDDED "Do not try to install dependencies" OFF)
 
 set(MYSQLPOOL_LOGGER "clog" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
-set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable")
+set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable. One of 'none', error', 'warn', 'info', 'debug', 'trace'")
 
 set(MYSQLPOOL_DBUSER "MYSQLPOOL_DBUSER" CACHE STRING "Environment variable to get login user name name from")
 set(MYSQLPOOL_DBPASSW "MYSQLPOOL_DBPASSW" CACHE STRING "Environment variable to get user login password from")
 set(MYSQLPOOL_DATABASE "MYSQLPOOL_DATABASE" CACHE STRING "Environment variable to get database name from")
-set(MYSQLPOOL_HOST "MYSQLPOOL_HOST" CACHE STRING "Environment variable to get the dbservers hostname or IP address from")
-set(MYSQLPOOL_PORT "MYSQLPOOL_PORT" CACHE STRING "Environment variable to get the dbservers port number from")
+set(MYSQLPOOL_DBHOST "MYSQLPOOL_DBHOST" CACHE STRING "Environment variable to get the dbservers hostname or IP address from")
+set(MYSQLPOOL_DBPORT "MYSQLPOOL_DBPORT" CACHE STRING "Environment variable to get the dbservers port number from")
+set(MYSQLPOOL_DB_TLS_MODE "MYSQLPOOL_DB_TLS_MODE" CACHE STRING "Environment variable to get the TLS mode from . One of: 'disable', 'enable', 'require'")
 
 set(DEFAULT_MYSQLPOOL_DBUSER "" CACHE STRING "Default db user")
 set(DEFAULT_MYSQLPOOL_DBPASSW "" CACHE STRING "Default db password")
 set(DEFAULT_MYSQLPOOL_DATABASE "" CACHE STRING "Default database name")
-set(DEFAULT_MYSQLPOOL_HOST "localhost" CACHE STRING "Default port to the server")
+set(DEFAULT_MYSQLPOOL_HOST "localhost" CACHE STRING "Default host for the server")
 set(DEFAULT_MYSQLPOOL_PORT 3306 CACHE STRING "Default port to the server")
+set(DEFAULT_MYSQLPOOL_TLS_MODE "enable" CACHE STRING "TLS requirements. One of 'disable', 'enable', 'require'")
 
 if (MYSQLPOOL_LOGGER STREQUAL "clog")
     set(MYSQLPOOL_LOG_WITH_CLOG ON)
@@ -88,6 +90,19 @@ set(MYSQLPOOL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 
+if (MYSQLPOOL_WITH_CONAN)
+    if (MYSQLPOOL_LOG_WITH_LOGFAULT)
+        message("Conan is in use. Will use that to get logfault")
+        #find_package (Logfault REQUIRED)
+        message("CMAKE_INCLUDE_PATH: ${CMAKE_INCLUDE_PATH}")
+    endif()
+elseif (MYSQLPOOL_EMBEDDED)
+    message("Using dependencies as they are installed on the system.")
+else()
+    include(cmake/3rdparty.cmake)
+endif()
+
+
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -126,12 +141,6 @@ if (MYSQLPOOL_WITH_TESTS)
         set(GTEST_LIBRARIES GTest::gtest)
     endif()
     add_subdirectory(tests)
-endif()
-
-if (MYSQLPOOL_EMBEDDED)
-    message("Using dependencies as they are installed on the system.")
-else()
-    include(cmake/3rdparty.cmake)
 endif()
 
 add_subdirectory(src)

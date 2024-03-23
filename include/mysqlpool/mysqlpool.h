@@ -109,6 +109,8 @@ struct Options {
 
 class Mysqlpool {
 public:
+    using connection_t = boost::mysql::tcp_ssl_connection;
+
     Mysqlpool(boost::asio::io_context& ctx, const DbConfig& config)
         : ctx_{ctx}, semaphore_{ctx}, config_{config}
     {
@@ -132,10 +134,9 @@ public:
             CONNECTING
         };
 
-        Connection(Mysqlpool& parent, boost::mysql::tcp_connection &&conn);
+        Connection(Mysqlpool& parent);
 
         ~Connection();
-
 
         State state() const noexcept {
             return state_;
@@ -193,7 +194,8 @@ public:
             return name == time_zone_name_;
         }
 
-        boost::mysql::tcp_connection connection_;
+        boost::asio::ssl::context ssl_ctx_{boost::asio::ssl::context::tls_client};
+        connection_t connection_;
     private:
         std::atomic<State> state_{State::CLOSED};
         bool taken_{false};
@@ -381,6 +383,7 @@ public:
      */
     boost::asio::awaitable<void> close();
 
+    boost::mysql::ssl_mode sslMode() const;
 private:
 
     /*! Internal method called by a `Connection` after it is closed.
@@ -390,16 +393,18 @@ private:
      */
     void closed(Connection& conn);
 
-    template <typename epT, typename connT = boost::mysql::tcp_connection>
+    template <typename epT, typename connT = connection_t>
     boost::asio::awaitable<void> connect(connT& conn, epT& endpoints, unsigned iteration, bool retry) {
 
         const auto user = dbUser();
         const auto pwd = dbPasswd();
-        boost::mysql::handshake_params params(
+        boost::mysql::handshake_params params{
             user,
             pwd,
             config_.database
-            );
+        };
+
+        params.set_ssl(sslMode());
 
         std::string why;
         unsigned retries = 0;

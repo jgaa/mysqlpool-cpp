@@ -1,4 +1,6 @@
 
+message("tests: LOGFAULT_INCLUDEDIR=${LOGFAULT_INCLUDEDIR}")
+
 message ("GTEST_LIBRARIES: ${GTEST_LIBRARIES}")
 message ("GTest_LIBRARIES: ${GTest_LIBRARIES}")
 
@@ -29,6 +31,7 @@ add_dependencies(unit_tests
 
 target_include_directories(unit_tests
     PRIVATE
+    ${CMAKE_INCLUDE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${MYSQLPOOL_ROOT}/include
     ${MYSQLPOOL_ROOT}/src/lib
@@ -36,6 +39,7 @@ target_include_directories(unit_tests
     ${CMAKE_BINARY_DIR}/external-projects/installed/include>
     ${CMAKE_CURRENT_BINARY_DIR}
     ${GTEST_INCLUDE_DIRS}
+    ${LOGFAULT_INCLUDEDIR}
     )
 
 target_link_libraries(unit_tests
@@ -73,6 +77,7 @@ target_include_directories(integration_tests
     ${CMAKE_BINARY_DIR}/external-projects/installed/include>
     ${CMAKE_CURRENT_BINARY_DIR}
     ${GTEST_INCLUDE_DIRS}
+    ${LOGFAULT_INCLUDEDIR}
     )
 
 target_link_libraries(integration_tests

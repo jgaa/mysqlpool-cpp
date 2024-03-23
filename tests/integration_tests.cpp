@@ -17,7 +17,7 @@ using namespace jgaa::mysqlpool;
 // Too run this test, the environment variable MYSQLPOOL_DBPASSW must be set with
 // a password to the database server to use.
 
-// If the database is not running on localhost:3306, MYSQLPOOL_HOST and MYSQLPOOL_PORT
+// If the database is not running on localhost:3306, MYSQLPOOL_DBHOST and MYSQLPOOL_DBPORT
 // may also need to be set.
 // If you test with another user than 'root', MYSQLPOOL_DBUSER needs to be set.
 // If you test aith another database than 'mysql', MYSQLPOOL_DATABASE needs to be set
