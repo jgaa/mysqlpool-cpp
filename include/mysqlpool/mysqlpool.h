@@ -102,8 +102,8 @@ using results = boost::mysql::results;
 constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitable);
 
 struct Options {
-    bool reconnect_and_retry_query_{true};
-    std::string locale_name;
+    bool reconnect_and_retry_query{true};
+    std::string time_zone;
     bool throw_on_empty_connection{false};
 };
 
@@ -313,23 +313,23 @@ public:
 
     again:
         // TODO: Revert the session time zone back to default if opts.locale_name is empty?
-        if (!opts.locale_name.empty()
-            && !conn.connectionWrapper()->isSameTimeZone(opts.locale_name)) {
+        if (!opts.time_zone.empty()
+            && !conn.connectionWrapper()->isSameTimeZone(opts.time_zone)) {
 
             // TODO: Cache this prepared statement
             const auto zone_query = "SET time_zone=?";
-            logQuery("locale", zone_query, opts.locale_name);
+            logQuery("locale", zone_query, opts.time_zone);
             auto [sec, stmt] = co_await conn.connection().async_prepare_statement(zone_query, diag, tuple_awaitable);
             if (!handleError(sec, diag)) {
                 co_await conn.reconnect();
                 goto again;
             }
-            auto [ec] = co_await conn.connection().async_execute(stmt.bind(opts.locale_name), res, diag, tuple_awaitable);
+            auto [ec] = co_await conn.connection().async_execute(stmt.bind(opts.time_zone), res, diag, tuple_awaitable);
             if (!handleError(ec, diag)) {
                 co_await conn.reconnect();
                 goto again;
             }
-            conn.connectionWrapper()->setTimeZone(opts.locale_name);
+            conn.connectionWrapper()->setTimeZone(opts.time_zone);
         }
 
         if constexpr (sizeof...(argsT) == 0) {

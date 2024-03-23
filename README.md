@@ -106,12 +106,12 @@ that it must be possible. Mysqlpool-cpp offer several compile time alternatives.
 - **internal** Allows you to forward the log events from the library to whatever log system you use.
 - **logfault** Use the [logfault](https://github.com/jgaa/logfault) logger. This require that this logger is used project wide, which is unusual. Except for my own projects.
 - **boost** Uses Boost.log, via `BOOST_LOG_TRIVIAL`. This require that this logger is used project wide.
-- **none** Does not log anything.
+- **none** Does not log anything. Pretends to be just another C++ library ;)
 
 You can specify your chosen logger via the `MYSQLPOOL_LOGGER` CMake variable. For example `cmake .. -CMYSQLPOOL_LOGGER=boost`.
 
-If you use the **internal** logger, here is an example on how to use it. In the lamda
-passed to SetHandler, you can bridge it to the logger you use in your application:
+If you use the **internal** logger, here is an example on how to use it. In the lambda
+passed to `SetHandler`, you can bridge it to the logger you use in your application:
 
 ```C++
 void BridgeLogger(jgaa::mysqlpool::LogLevel llevel = jgaa::mysqlpool::LogLevel::INFO) {
@@ -135,6 +135,7 @@ void BridgeLogger(jgaa::mysqlpool::LogLevel llevel = jgaa::mysqlpool::LogLevel::
 ```
 
 **Log levels**
+
 When you develop your code, trace level logging can be useful. For example, the logging of SQL statements
 happens on **trace** log level. In production code you will probably never user trace level. Probably not
 even **debug** level. In order to totally remove all these log statements from the compiled code, you
@@ -160,8 +161,8 @@ with level **info**, **warning** and **error**.
 | MYSQLPOOL_DB_TLS_MODE | string | Environment variable to get the TLS mode from . One of: 'disable', 'enable', 'require' |
 | MYSQLPOOL_EMBEDDED | bool | Tells CMake not to install dependencies from *cmake/3rdparty.cmake* |
 | MYSQLPOOL_LOGGER | string | Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'. |
-| MYSQLPOOL_LOG_LEVEL_STR | string | Minimum log level to enable. Minimum log level to enable. One of 'none', error', 'warn', 'info', 'debug', 'trace'. |
-| MYSQLPOOL_WITH_CONAN | bool | Tells CMake that conan is in charge." |
+| MYSQLPOOL_LOG_LEVEL_STR | string | Minimum log level to enable. One of 'none', error', 'warn', 'info', 'debug', 'trace'. |
+| MYSQLPOOL_WITH_CONAN | bool | Tells CMake that conan is in charge. |
 | MYSQLPOOL_WITH_EXAMPLES | bool | Builds the example |
 | MYSQLPOOL_WITH_INTGRATION_TESTS | bool | Enables integration tests |
 | MYSQLPOOL_WITH_TESTS | bool | Enables unit tests |
@@ -257,3 +258,132 @@ boost::asio::awaitable<void> get_db_version(mp::Mysqlpool& pool) {
 }
 
 ```
+
+Now, lets do some real work.
+
+```C++
+
+boost::asio::awaitable<void> add_and_query_data(mp::Mysqlpool& pool) {
+
+    // Create a table we can play with in the current database
+    co_await pool.exec("CREATE OR REPLACE TABLE test_table (id INT, name TEXT, created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+
+    // Insert data using prepared statements. The `exec` method can take any number
+    // of arguments, as long as they are compatible with Boost.mysql data values.
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 1, "Alice");
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 2, "Bob");
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 3, "Charlie");
+
+    // Now, let's query the table and loop over the results.
+    cout << "Data inserted." << endl;
+    auto res = co_await pool.exec("SELECT * FROM test_table");
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: "
+             << row[1].as_string()
+             << ", created: "
+             << row[2].as_datetime()
+             << endl;
+    }
+
+    // Change Bob's name to David
+    co_await pool.exec("UPDATE test_table SET name = ? WHERE id = ?", "David", 2);
+
+    cout << "Data updated." << endl;
+    res = co_await pool.exec("SELECT * FROM test_table");
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+    }
+
+    // Now, lets insert another row, but this time we will use a tuple to carry the data
+    auto data = make_tuple(4, "Eve"s);
+    co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", data);
+
+    cout << "More data inserted ." << endl;
+    res = co_await pool.exec("SELECT * FROM test_table WHERE id = ?", 4);
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+    }
+
+    // All the queries so far has used automatic error handling.
+    // Let's disable that, so that the query will throw and exception if there
+    // is a problem with the connection to the server.
+    mp::Options opts;
+    opts.reconnect_and_retry_query = false;
+    // We put `opts` after the query, and the data after that.
+    co_await pool.exec("UPDATE test_table SET name = ? WHERE id = ?", opts, "Fred", 2);
+
+    cout << "Data updated. David changed name again!" << endl;
+    res = co_await pool.exec("SELECT * FROM test_table");
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+    }
+
+    // Let's use a lambda to print the rows. No need to repeat the code.
+    const auto print = [](const auto& rows) {
+        for(auto row : rows) {
+            cout << "id: " << row[0].as_int64() << ", name: "
+                 << row[1].as_string()
+                 << ", created: "
+                 << row[2].as_string()
+                 << endl;
+        }
+    };
+
+    // Now, lets see how we can change the time zone of the query.
+    // This time we format the timestamp in the rows to a string on the server.
+    // This does not make much sense, but for queries that specify a date or time,
+    // it's quite useful if the users are in different time zones.
+
+    // first, lets use whatever is default.
+    cout << "Default time zone:" << endl;
+    res = co_await pool.exec("SELECT id, name, DATE_FORMAT(created_date, '%Y-%m-%d %H:%m') FROM test_table");
+    print(res.rows());
+
+    opts.reconnect_and_retry_query = true; // We want to retry if there is a problem.
+    opts.time_zone = "CET"; // Central European Time
+    cout << "Time zone :" << opts.time_zone << endl;
+    res = co_await pool.exec("SELECT id, name, DATE_FORMAT(created_date, '%Y-%m-%d %H:%m') FROM test_table", opts);
+    print(res.rows());
+
+    opts.time_zone = "America/New_York";
+    cout << "Time zone :" << opts.time_zone << endl;
+    res = co_await pool.exec("SELECT id, name, DATE_FORMAT(created_date, '%Y-%m-%d %H:%m') FROM test_table", opts);
+    print(res.rows());
+
+    co_await pool.exec("DROP TABLE test_table");
+    co_return;
+}
+
+```
+
+## Building
+
+You can build the library using CMake.
+
+You can also build it using conan to get the dependencies. However, the library
+is not yet in the Conan Center - so your project can't depend on it.
+
+The simplest way to use it in a project today is probably to use CMake's `ExternalProject_Add` or
+to add it as a git submodule.
+
+**git submodule**
+
+If you use it as a git submodule, make sure to
+set `MYSQLPOOL_EMBEDDED` to `ON`
+
+You can use something like below in your projects `CMakeLists.txt`, adjusted with your paths and preferences.
+
+```cmake
+
+set(MYSQLPOOL_EMBEDDED ON CACHE INTERNAL "")
+set(MYSQLPOOL_LOGGER boost CACHE INTERNAL "")
+set(MYSQLPOOL_LOG_LEVEL_STR trace CACHE INTERNAL "")
+set(DEFAULT_MYSQLPOOL_DBUSER myuser CACHE INTERNAL "")
+set(DEFAULT_MYSQLPOOL_DATABASE mydb CACHE INTERNAL "")
+set(MYSQLPOOL_WITH_TESTS OFF CACHE INTERNAL "")
+set(MYSQLPOOL_WITH_EXAMPLES OFF CACHE INTERNAL "")
+add_subdirectory(dependencies/mysqlpool-cpp)
+include_directories(${NEXTAPP_ROOT}/dependencies/mysqlpool-cpp/include)
+
+```
+

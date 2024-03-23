@@ -9,8 +9,6 @@
 using namespace std;
 namespace mp = jgaa::mysqlpool;
 
-
-
 boost::asio::awaitable<void> ping_the_db_server(mp::Mysqlpool& pool) {
 
     // Lets get an actual connection to the database
@@ -79,20 +77,27 @@ boost::asio::awaitable<void> get_db_version(mp::Mysqlpool& pool) {
 }
 
 boost::asio::awaitable<void> add_and_query_data(mp::Mysqlpool& pool) {
-    // Now, lets create a new table, insert some data, and query it.
+    // Create a table we can play with in the current database
+    co_await pool.exec("CREATE OR REPLACE TABLE test_table (id INT, name TEXT, created_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)");
 
-    co_await pool.exec("GAKK, CREATE OR REPLACE TABLE test_table (id INT, name TEXT)");
-
+    // Insert data using prepared statements. The `exec` method can take any number
+    // of arguments, as long as they are compatible with Boost.mysql data values.
     co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 1, "Alice");
     co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 2, "Bob");
     co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 3, "Charlie");
 
+    // Now, let's query the table and loop over the results.
     cout << "Data inserted." << endl;
     auto res = co_await pool.exec("SELECT * FROM test_table");
     for(auto row : res.rows()) {
-        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+        cout << "id: " << row[0].as_int64() << ", name: "
+             << row[1].as_string()
+             << ", created: "
+             << row[2].as_datetime()
+             << endl;
     }
 
+    // Change Bob's name to David
     co_await pool.exec("UPDATE test_table SET name = ? WHERE id = ?", "David", 2);
 
     cout << "Data updated." << endl;
@@ -101,7 +106,7 @@ boost::asio::awaitable<void> add_and_query_data(mp::Mysqlpool& pool) {
         cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
     }
 
-    // Now, lets insert another row, but this tme we will use a tuple to carry the data
+    // Now, lets insert another row, but this time we will use a tuple to carry the data
     auto data = make_tuple(4, "Eve"s);
     co_await pool.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", data);
 
@@ -110,6 +115,52 @@ boost::asio::awaitable<void> add_and_query_data(mp::Mysqlpool& pool) {
     for(auto row : res.rows()) {
         cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
     }
+
+    // All the queries so far has used automatic error handling.
+    // Let's disable that, so that the query will throw and exception if there
+    // is a problem with the connection to the server.
+    mp::Options opts;
+    opts.reconnect_and_retry_query = false;
+    // We put `opts` after the query, and the data after that.
+    co_await pool.exec("UPDATE test_table SET name = ? WHERE id = ?", opts, "Fred", 2);
+
+    cout << "Data updated. David changed name again!" << endl;
+    res = co_await pool.exec("SELECT * FROM test_table");
+    for(auto row : res.rows()) {
+        cout << "id: " << row[0].as_int64() << ", name: " << row[1].as_string() << endl;
+    }
+
+    // Let's use a lambda to print the rows. No need to repeat the code.
+    const auto print = [](const auto& rows) {
+        for(auto row : rows) {
+            cout << "id: " << row[0].as_int64() << ", name: "
+                 << row[1].as_string()
+                 << ", created: "
+                 << row[2].as_string()
+                 << endl;
+        }
+    };
+
+    // Now, lets see how we can change the time zone of the query.
+    // This time we format the timestamp in the table to a string on the server.
+    // This does not make much sense, but for queries that specify a date or time,
+    // it's quite useful if the users are in different time zones.
+
+    // first, lets use whatever is default.
+    cout << "Default time zone:" << endl;
+    res = co_await pool.exec("SELECT id, name, DATE_FORMAT(created_date, '%Y-%m-%d %H:%m') FROM test_table");
+    print(res.rows());
+
+    opts.reconnect_and_retry_query = true; // We want to retry if there is a problem.
+    opts.time_zone = "CET"; // Central European Time
+    cout << "Time zone :" << opts.time_zone << endl;
+    res = co_await pool.exec("SELECT id, name, DATE_FORMAT(created_date, '%Y-%m-%d %H:%m') FROM test_table", opts);
+    print(res.rows());
+
+    opts.time_zone = "America/New_York";
+    cout << "Time zone :" << opts.time_zone << endl;
+    res = co_await pool.exec("SELECT id, name, DATE_FORMAT(created_date, '%Y-%m-%d %H:%m') FROM test_table", opts);
+    print(res.rows());
 
     co_await pool.exec("DROP TABLE test_table");
     co_return;
