@@ -38,6 +38,14 @@ struct DbConfig {
     /// Database (name) to use
     std::string database = getEnv(MYSQLPOOL_DATABASE, DEFAULT_MYSQLPOOL_DATABASE);
 
+    /*! TLS mode
+     *
+     *  - disable: Never use TLS
+     *  - enable: Use TLS if the server supports it, fall back to non-encrypted connection if it does not.
+     *  - require: Always use TLS; abort the connection if the server does not support it.
+     */
+    std::string ssl_mode = getEnv(MYSQLPOOL_TLS_MODE, DEFAULT_MYSQLPOOL_TLS_MODE);
+
     /*! Number of times to retry connecting to the database
      *
      *  This is useful if the app is started before or at the same time as the

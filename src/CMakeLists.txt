@@ -10,7 +10,11 @@ add_library(${PROJECT_NAME}
     ${LOGGING_SRC}
 )
 
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_INCLUDE_PATH}
+    ${Boost_INCLUDE_DIR}
+    ${LOGFAULT_INCLUDEDIR}
+    PUBLIC
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
@@ -18,9 +22,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    PRIVATE
-    $Boost_INCLUDE_DIR
-    ${LOGFAULT_INCLUDEDIR}
     )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
@@ -42,6 +43,10 @@ target_link_libraries(${PROJECT_NAME}
     ${STANDARD_FS_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
 )
+
+if (DEFINED CONAN_EXPORTED)
+    target_link_libraries(${PROJECT_NAME} logfault::logfault)
+endif()
 
 message(STATUS "Components to pack (${PROJECT_NAME}): ${CPACK_COMPONENTS_ALL}")
 

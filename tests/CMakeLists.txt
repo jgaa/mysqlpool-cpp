@@ -31,6 +31,7 @@ add_dependencies(unit_tests
 
 target_include_directories(unit_tests
     PRIVATE
+    ${CMAKE_INCLUDE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${MYSQLPOOL_ROOT}/include
     ${MYSQLPOOL_ROOT}/src/lib

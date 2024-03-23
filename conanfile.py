@@ -1,5 +1,5 @@
 from conan import ConanFile
-from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout
+from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
 from conan.tools.build import check_max_cppstd, check_min_cppstd
 
 class mysqlpoolRecipe(ConanFile):
@@ -15,11 +15,11 @@ class mysqlpoolRecipe(ConanFile):
 
     # Binary configuration
     settings = "os", "compiler", "build_type", "arch"
-    options = {"shared": [True, False], "fPIC": [True, False], "logger": ["clog", "internal", "boost", "none"], "log_level": ["trace", "debug", "info", "warn"]}
-    default_options = {"shared": False, "fPIC": True, "logger": "clog", "log_level": "info"}
+    options = {"logger": ["logfault", "clog", "internal", "boost", "none"], "log_level": ["trace", "debug", "info", "warn"]}
+    default_options = {"logger": "clog", "log_level": "info"}
 
     # Sources are located in the same place as this recipe, copy them to the recipe
-    exports_sources = "config.h.template", "CMakeLists.txt", "src/*", "include/*", "tests/*", "cmake/*"
+    exports_sources = "config.h.template", "CMakeLists.txt", "src/*", "include/*", "tests/*", "cmake/*", "examples/*"
 
     #def config_options(self):
 
@@ -27,10 +27,14 @@ class mysqlpoolRecipe(ConanFile):
         cmake_layout(self)
 
     def generate(self):
-        tc = CMakeToolchain(self)
+        deps = CMakeDeps(self)
+        deps.generate()
+
+        tc = CMakeToolchain(self, generator="Ninja")
 
         tc.variables["MYSQLPOOL_LOGGER"] = self.options.logger
         tc.variables["MYSQLPOOL_LOG_LEVEL_STR"] = self.options.log_level
+        tc.variables["MYSQLPOOL_WITH_CONAN"] = True
 
         tc.generate()
 
@@ -49,14 +53,16 @@ class mysqlpoolRecipe(ConanFile):
 
     def package_info(self):
         self.cpp_info.libs = ["mysqlpool"]
+        self.cpp_info.set_property("cmake_target_name", "mysqlpool::mysqlpool")
 
     def validate(self):
         check_min_cppstd(self, "20")
 
     def requirements(self):
+        #self.requires("boost/[>=1.84.0]")
         self.requires("zlib/[~1.3]")
         self.requires("openssl/[~3]")
-        self.requires("boost/[>=1.83.0]")
+        self.requires("logfault/[>=0.5.0]")
         self.test_requires("gtest/[>=1.14]")
 
     # def test(self):

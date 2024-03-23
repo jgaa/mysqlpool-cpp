@@ -25,12 +25,14 @@ set(MYSQLPOOL_DBPASSW "MYSQLPOOL_DBPASSW" CACHE STRING "Environment variable to 
 set(MYSQLPOOL_DATABASE "MYSQLPOOL_DATABASE" CACHE STRING "Environment variable to get database name from")
 set(MYSQLPOOL_HOST "MYSQLPOOL_HOST" CACHE STRING "Environment variable to get the dbservers hostname or IP address from")
 set(MYSQLPOOL_PORT "MYSQLPOOL_PORT" CACHE STRING "Environment variable to get the dbservers port number from")
+set(MYSQLPOOL_TLS_MODE "MYSQLPOOL_TLS_MODE" CACHE STRING "Environment variable to get the TLS mode from")
 
 set(DEFAULT_MYSQLPOOL_DBUSER "" CACHE STRING "Default db user")
 set(DEFAULT_MYSQLPOOL_DBPASSW "" CACHE STRING "Default db password")
 set(DEFAULT_MYSQLPOOL_DATABASE "" CACHE STRING "Default database name")
 set(DEFAULT_MYSQLPOOL_HOST "localhost" CACHE STRING "Default port to the server")
 set(DEFAULT_MYSQLPOOL_PORT 3306 CACHE STRING "Default port to the server")
+set(DEFAULT_MYSQLPOOL_TLS_MODE "require" CACHE STRING "TLS requirements. One of 'disable', 'enable', 'require'")
 
 if (MYSQLPOOL_LOGGER STREQUAL "clog")
     set(MYSQLPOOL_LOG_WITH_CLOG ON)
@@ -87,6 +89,17 @@ set(MYSQLPOOL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 
+if (MYSQLPOOL_WITH_CONAN)
+    if (MYSQLPOOL_LOG_WITH_LOGFAULT)
+        message("Conan is in use. Will use that to get logfault")
+        #find_package (Logfault REQUIRED)
+        message("CMAKE_INCLUDE_PATH: ${CMAKE_INCLUDE_PATH}")
+    endif()
+else()
+    include(cmake/3rdparty.cmake)
+endif()
+
+
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -109,8 +122,6 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY
     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
-
-include(cmake/3rdparty.cmake)
 
 if (MYSQLPOOL_WITH_EXAMPLES)
     add_subdirectory(examples/simple)

@@ -11,6 +11,7 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 target_link_libraries(${PROJECT_NAME} mysqlpool)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_INCLUDE_PATH}
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
