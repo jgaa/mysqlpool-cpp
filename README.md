@@ -119,6 +119,29 @@ For example: `cmake .. -CMYSQLPOOL_LOG_LEVEL_STR=info` will remove all trace and
 the code. Even if you run your application with trace log level, mysqlpool-cpp will only show messages
 with level **info**, **warning** and **error**.
 
+## CMake options and variables 
+| name | type | explanation |
+|------|------|-------------|
+| DEFAULT_MYSQLPOOL_DATABASE | string | Default database name |
+| DEFAULT_MYSQLPOOL_DBPASSW | string | Default db password |
+| DEFAULT_MYSQLPOOL_DBUSER | string | Default db user |
+| DEFAULT_MYSQLPOOL_HOST | string | Default host for the server | 
+| DEFAULT_MYSQLPOOL_PORT | string | Default port to the server |
+| DEFAULT_MYSQLPOOL_TLS_MODE | string | TLS requirements |
+| LOGFAULT_DIR | string | Path to the Logfault header only library. If used, CMake will not install it from *cmake/3rdparty.cmake*" |
+| MYSQLPOOL_DBHOST | string | Environment variable to get the dbservers hostname or IP address from |
+| MYSQLPOOL_DBPASSW | string | Environment variable to get user login password from. |
+| MYSQLPOOL_DBPORT | string | Environment variable to get the dbservers port number from |
+| MYSQLPOOL_DBUSER | string | Environment variable to get login user name name from. |
+| MYSQLPOOL_DB_TLS_MODE | string | Environment variable to get the TLS mode from . One of: 'disable', 'enable', 'require' |
+| MYSQLPOOL_EMBEDDED | bool | Tells CMake not to install dependencies from *cmake/3rdparty.cmake* |
+| MYSQLPOOL_LOGGER | string | Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'. |
+| MYSQLPOOL_LOG_LEVEL_STR | string | Minimum log level to enable. Minimum log level to enable. One of 'none', error', 'warn', 'info', 'debug', 'trace'. |
+| MYSQLPOOL_WITH_CONAN | bool | Tells CMake that conan is in charge." |
+| MYSQLPOOL_WITH_EXAMPLES | bool | Builds the example |
+| MYSQLPOOL_WITH_INTGRATION_TESTS | bool | Enables integration tests |
+| MYSQLPOOL_WITH_TESTS | bool | Enables unit tests |
+
 ## Use
 
 When you use the library, you can ask for a handle to a database connection. The connection

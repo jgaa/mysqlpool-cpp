@@ -13,10 +13,10 @@ std::string getEnv(const std::string& name, std::string defaultValue = {});
 
 struct DbConfig {
     /// Host where the DB server is running.
-    std::string host = getEnv(MYSQLPOOL_HOST, DEFAULT_MYSQLPOOL_HOST);
+    std::string host = getEnv(MYSQLPOOL_DBHOST, DEFAULT_MYSQLPOOL_HOST);
 
     /// Port used by the DB server
-    uint16_t port = static_cast<uint16_t>(std::stoi(getEnv(MYSQLPOOL_PORT, DEFAULT_MYSQLPOOL_PORT)));
+    uint16_t port = static_cast<uint16_t>(std::stoi(getEnv(MYSQLPOOL_DBPORT, DEFAULT_MYSQLPOOL_PORT)));
 
     /// Max number of connections to the server
     size_t max_connections = 6;
@@ -44,7 +44,7 @@ struct DbConfig {
      *  - enable: Use TLS if the server supports it, fall back to non-encrypted connection if it does not.
      *  - require: Always use TLS; abort the connection if the server does not support it.
      */
-    std::string ssl_mode = getEnv(MYSQLPOOL_TLS_MODE, DEFAULT_MYSQLPOOL_TLS_MODE);
+    std::string ssl_mode = getEnv(MYSQLPOOL_DB_TLS_MODE, DEFAULT_MYSQLPOOL_TLS_MODE);
 
     /*! Number of times to retry connecting to the database
      *

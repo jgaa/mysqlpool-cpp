@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED MYSQLPOOL_VERSION)
-    set(MYSQLPOOL_VERSION 0.0.1)
+    set(MYSQLPOOL_VERSION 0.0.2)
 endif()
 
 project(mysqlpool-cpp
@@ -24,16 +24,16 @@ set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable")
 set(MYSQLPOOL_DBUSER "MYSQLPOOL_DBUSER" CACHE STRING "Environment variable to get login user name name from")
 set(MYSQLPOOL_DBPASSW "MYSQLPOOL_DBPASSW" CACHE STRING "Environment variable to get user login password from")
 set(MYSQLPOOL_DATABASE "MYSQLPOOL_DATABASE" CACHE STRING "Environment variable to get database name from")
-set(MYSQLPOOL_HOST "MYSQLPOOL_HOST" CACHE STRING "Environment variable to get the dbservers hostname or IP address from")
-set(MYSQLPOOL_PORT "MYSQLPOOL_PORT" CACHE STRING "Environment variable to get the dbservers port number from")
-set(MYSQLPOOL_TLS_MODE "MYSQLPOOL_TLS_MODE" CACHE STRING "Environment variable to get the TLS mode from")
+set(MYSQLPOOL_DBHOST "MYSQLPOOL_DBHOST" CACHE STRING "Environment variable to get the dbservers hostname or IP address from")
+set(MYSQLPOOL_DBPORT "MYSQLPOOL_DBPORT" CACHE STRING "Environment variable to get the dbservers port number from")
+set(MYSQLPOOL_DB_TLS_MODE "MYSQLPOOL_DB_TLS_MODE" CACHE STRING "Environment variable to get the TLS mode from")
 
 set(DEFAULT_MYSQLPOOL_DBUSER "" CACHE STRING "Default db user")
 set(DEFAULT_MYSQLPOOL_DBPASSW "" CACHE STRING "Default db password")
 set(DEFAULT_MYSQLPOOL_DATABASE "" CACHE STRING "Default database name")
 set(DEFAULT_MYSQLPOOL_HOST "localhost" CACHE STRING "Default port to the server")
 set(DEFAULT_MYSQLPOOL_PORT 3306 CACHE STRING "Default port to the server")
-set(DEFAULT_MYSQLPOOL_TLS_MODE "require" CACHE STRING "TLS requirements. One of 'disable', 'enable', 'require'")
+set(DEFAULT_MYSQLPOOL_TLS_MODE "enable" CACHE STRING "TLS requirements. One of 'disable', 'enable', 'require'")
 
 if (MYSQLPOOL_LOGGER STREQUAL "clog")
     set(MYSQLPOOL_LOG_WITH_CLOG ON)
