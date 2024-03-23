@@ -32,9 +32,9 @@ Even if the database calls are async and support async coroutines, one
 connection can only process one request at the time. The reason for this
 is (to the best of my understanding) that mysql and mariadb use a request/response
 model in the database client/server communications protocol. So even if
-your coroutine had asked for some data and is ready to call another database
+your code had asked for some data and is ready to call another database
 method, it needs to wait for the response from the previous one before it
-can continue. Or it needs to juggle multiple connections. It could create
+can continue on that connection. Or it needs to juggle multiple connections. It could create
 a new connection for each request - but this would give some overhead as it
 takes time to set up a connections - especially if you use TLS. Another
 challenge is error handling. Each request in a real application require
@@ -66,9 +66,9 @@ need. However, you will have to deal with the error handling yourself.
 
 ## Features
  - Dynamic number of connections in the pool. You specify the minimum and maximum number of connections, and the idle time before a connection is closed.
- - Semi automatic error handling, where recoverable errors can be retried automatically. If you use this, `co_await pool.exec(...)` will return when the query finally succeeds, or the retry count reach a configurable threshold.
+ - Semi automatic error handling, where recoverable errors can be retried automatically. If you use this, `co_await pool.exec(...)` will return when the query finally succeeds, or throw an exception if the retry count reach a configurable threshold.
  - Requests are queued if all the available connections are in use. The pool will open more connections in the background up to the limit.
- - The high level `exec` method handles connection allocation,
+ - The high level `exec` method handles connection allocation, per request options, error handling and reporting and data binding.
  - All SQL queries can be logged, include the arguments to prepared statements.
  - Time Zone can be specified for a query. The pool will then ensure that the connection
  used for that request use the specified time zone. Useful for servers that handle
@@ -383,7 +383,7 @@ set(DEFAULT_MYSQLPOOL_DATABASE mydb CACHE INTERNAL "")
 set(MYSQLPOOL_WITH_TESTS OFF CACHE INTERNAL "")
 set(MYSQLPOOL_WITH_EXAMPLES OFF CACHE INTERNAL "")
 add_subdirectory(dependencies/mysqlpool-cpp)
-include_directories(${NEXTAPP_ROOT}/dependencies/mysqlpool-cpp/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/dependencies/mysqlpool-cpp/include)
 
 ```
 
