@@ -16,6 +16,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 option(MYSQLPOOL_WITH_TESTS "Enable Tests" ON)
 option(MYSQLPOOL_WITH_INTGRATION_TESTS "Enable Integretion Tests" OFF)
 option(MYSQLPOOL_WITH_EXAMPLES "Compile examples" ON)
+option(MYSQLPOOL_EMBEDDED "Do not try to install dependencies" OFF)
 
 set(MYSQLPOOL_LOGGER "clog" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
 set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable")
@@ -79,7 +80,7 @@ if (MYSQLPOOL_LOG_WITH_CLOG)
 endif()
 
 
-add_definitions(-DMYSQLPOOL_VERSION=\"${CMAKE_PROJECT_VERSION}\")
+#add_definitions(-DMYSQLPOOL_VERSION=\"${CMAKE_PROJECT_VERSION}\")
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -138,6 +139,12 @@ if (MYSQLPOOL_WITH_TESTS)
         set(GTEST_LIBRARIES GTest::gtest)
     endif()
     add_subdirectory(tests)
+endif()
+
+if (MYSQLPOOL_EMBEDDED)
+    message("Using dependencies as they are installed on the system.")
+else()
+    include(cmake/3rdparty.cmake)
 endif()
 
 add_subdirectory(src)

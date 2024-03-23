@@ -480,7 +480,7 @@ private:
 
     template <typename... T>
     void logQuery(std::string_view type, std::string_view query, T... bound) {
-        MYSQLPOOL_LOG_TRACE_("Exceuting " << type << " SQL query: " << query << logArgs(bound...));
+        MYSQLPOOL_LOG_TRACE_("Executing " << type << " SQL query: " << query << logArgs(bound...));
     }
 
     void startTimer();
