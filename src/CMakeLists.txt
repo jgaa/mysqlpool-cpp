@@ -10,18 +10,19 @@ add_library(${PROJECT_NAME}
     ${LOGGING_SRC}
 )
 
-target_include_directories(${PROJECT_NAME} PRIVATE
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
     ${CMAKE_INCLUDE_PATH}
     ${Boost_INCLUDE_DIR}
     ${LOGFAULT_INCLUDEDIR}
-    PUBLIC
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIR}>
-    $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/external-projects/installed/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    PUBLIC
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated-include>
+    $<BUILD_INTERFACE:${MYSQLPOOL_ROOT}/include>
     )
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)

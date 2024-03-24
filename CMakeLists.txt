@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED MYSQLPOOL_VERSION)
-    set(MYSQLPOOL_VERSION 0.0.2)
+    set(MYSQLPOOL_VERSION 0.2.0)
 endif()
 
 project(mysqlpool-cpp
@@ -9,6 +9,8 @@ project(mysqlpool-cpp
     HOMEPAGE_URL https://github.com/jgaa/mysqlpool-cpp
     VERSION ${MYSQLPOOL_VERSION}
     LANGUAGES CXX)
+
+include(GNUInstallDirs)
 
 set(MYSQLPOOL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -148,3 +150,6 @@ add_subdirectory(src)
 # We create a configuration file so that other code that include our header files gets the correct configuration.
 CONFIGURE_FILE(config.h.template ${CMAKE_BINARY_DIR}/generated-include/mysqlpool/config.h)
 
+install(TARGETS mysqlpool
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
