@@ -8,7 +8,14 @@ The library require C++20 and use C++20 coroutines.
 
 ## Status
 
-Under initial implementation. Not ready for adaption yet.
+First BETA release.
+
+Please create an issue if you find any problems or if you have suggestions
+on how to make the library more useful.
+
+Friction is a *bug*! If you experience any friction, please create an issue!
+
+PR's with fixes and improvements are most welcome!
 
 ## Supported platforms
 
@@ -73,6 +80,7 @@ need. However, you will have to deal with the error handling yourself.
  - Time Zone can be specified for a query. The pool will then ensure that the connection
  used for that request use the specified time zone. Useful for servers that handle
  requests for users from different time zones.
+ - Flexible logging options
 
 ## Error handling
 

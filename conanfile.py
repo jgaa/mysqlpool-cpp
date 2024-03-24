@@ -4,7 +4,7 @@ from conan.tools.build import check_max_cppstd, check_min_cppstd
 
 class mysqlpoolRecipe(ConanFile):
     name = "mysqlpool"
-    version = "0.0.2"
+    version = "0.2.0"
 
     # Optional metadata
     license = " BSL-1.0"
@@ -69,10 +69,10 @@ class mysqlpoolRecipe(ConanFile):
         check_min_cppstd(self, "20")
 
     def requirements(self):
-        #self.requires("boost/[>=1.84.0]")
+        self.requires("boost/[>=1.84.0]")
         self.requires("zlib/[~1.3]")
         self.requires("openssl/[~3]")
-        self.requires("logfault/[>=0.5.0]")
+        #self.requires("logfault/[>=0.5.0]") // Waiting for submission to Conan Center to be approved
         if not self.conf.get("tools.build:skip_test", default=False):
             self.test_requires("gtest/[>=1.14]")
 
