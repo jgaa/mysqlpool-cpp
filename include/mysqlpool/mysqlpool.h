@@ -16,6 +16,10 @@
 
 namespace jgaa::mysqlpool {
 
+inline ::std::ostream& operator << (::std::ostream& out, const boost::mysql::blob_view& blob) {
+    return out << "{ blob size: " << blob.size() << " }";
+}
+
 // https://stackoverflow.com/questions/68443804/c20-concept-to-check-tuple-like-types
 template<class T, std::size_t N>
 concept has_tuple_element =
