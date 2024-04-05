@@ -286,7 +286,7 @@ public:
             return name == time_zone_name_;
         }
 
-        // Cache the statement for setting the time zone (per connection)
+        // Cache for prepared statements (per connection)
         boost::asio::awaitable<std::tuple<boost::system::error_code, boost::mysql::statement *>> getStmt(boost::mysql::diagnostics& diag,
                                                                                                               std::string_view query) {
 

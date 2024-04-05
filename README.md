@@ -81,7 +81,7 @@ need. However, you will have to deal with the error handling yourself.
  - Time Zone can be specified for a query. The pool will then ensure that the connection
  used for that request use the specified time zone. Useful for servers that handle
  requests for users from different time zones.
- - Flexible logging options
+ - Flexible logging options.
 
 ## Error handling
 
