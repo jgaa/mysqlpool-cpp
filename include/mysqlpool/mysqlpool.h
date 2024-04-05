@@ -3,6 +3,7 @@
 #include <iostream>
 #include <utility>
 #include <chrono>
+#include <span>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
@@ -459,6 +460,8 @@ public:
             }
             assert(stmt != nullptr);
             assert(stmt->valid());
+
+            logQuery("stmt", query, args...);
             const auto [ec] = co_await conn.connection().async_execute(stmt->bind(args...), res, diag, tuple_awaitable);
 
             // Close the statement before we evaluate the query. The error handling for the
