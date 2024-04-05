@@ -3,18 +3,42 @@
 #include <iostream>
 #include <utility>
 #include <chrono>
+#include <span>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/functional/hash.hpp>
 
 #include "mysqlpool/conf.h"
 #include "mysqlpool/config.h"
 #include "mysqlpool/logging.h"
 
 namespace jgaa::mysqlpool {
+
+template <typename T>
+struct ScopedExit {
+    explicit ScopedExit(T&& fn)
+        : fn_{std::move(fn)} {}
+
+    ScopedExit(const ScopedExit&) = delete;
+    ScopedExit(ScopedExit&&) = delete;
+
+    ~ScopedExit() {
+        fn_();
+    }
+
+    ScopedExit& operator =(const ScopedExit&) = delete;
+    ScopedExit& operator =(ScopedExit&&) = delete;
+
+private:
+    T fn_;
+};
+
+using sha256_hash_t = std::array<uint8_t, 32>;
+sha256_hash_t sha256(const std::span<const uint8_t> in);
 
 inline ::std::ostream& operator << (::std::ostream& out, const boost::mysql::blob_view& blob) {
     return out << "{ blob size: " << blob.size() << " }";
@@ -109,11 +133,32 @@ struct Options {
     bool reconnect_and_retry_query{true};
     std::string time_zone;
     bool throw_on_empty_connection{false};
+
+    /// Any prepared statement that is executed will be closed after the query is executed
+    bool close_prepared_statement{false};
 };
 
 class Mysqlpool {
 public:
     using connection_t = boost::mysql::tcp_ssl_connection;
+
+    template <typename... T>
+    static std::string logArgs(const T... args) {
+        using namespace detail;
+        if constexpr (sizeof...(T)) {
+            std::stringstream out;
+            out << " | args: ";
+            auto col = 0;
+            ((out << (++col == 1 ? "" : ", ")  << args), ...);
+            return out.str();
+        }
+        return {};
+    }
+
+    template <typename... T>
+    static void logQuery(std::string_view type, std::string_view query, T... bound) {
+        MYSQLPOOL_LOG_TRACE_("Executing " << type << " SQL query: " << query << logArgs(bound...));
+    }
 
     Mysqlpool(boost::asio::io_context& ctx, const DbConfig& config)
         : ctx_{ctx}, semaphore_{ctx}, config_{config}
@@ -129,6 +174,41 @@ public:
 
     Mysqlpool& operator = (const Mysqlpool&) = delete;
     Mysqlpool& operator = (Mysqlpool&&) = delete;
+
+    class StatementCache {
+    public :
+        StatementCache() = default;
+
+        boost::mysql::statement& operator[](const std::span<const char> key) {
+            return cache_[makeHash(key)];
+        }
+
+        void clear() {
+            cache_.clear();
+        }
+
+        size_t size() const noexcept {
+            return cache_.size();
+        }
+
+        void erase(const std::span<const char> key) {
+            cache_.erase(makeHash(key));
+        }
+
+        sha256_hash_t makeHash(const std::span<const char> key) {
+            return sha256(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>(key.data()), key.size()));
+        }
+
+    private:
+        struct ArrayHasher {
+            std::size_t operator()(const sha256_hash_t& key) const {
+                /* I might my wrong, but it makes no sense to me to re-hash a cryptographic hash */
+                size_t val = *reinterpret_cast<const size_t *>(key.data());
+                return val;
+            }
+        };
+        std::unordered_map<sha256_hash_t, boost::mysql::statement, ArrayHasher> cache_;
+    };
 
     struct Connection {
         enum class State {
@@ -183,6 +263,14 @@ public:
             return uuid_;
         }
 
+        void clearCache() {
+            stmt_cache_.clear();
+        }
+
+        auto& stmtCache() noexcept {
+            return stmt_cache_;
+        }
+
         // NB: not synchronized. Assumes safe access when it's not being changed.
         void setTimeZone(const std::string& name) {
             time_zone_name_ = name;
@@ -198,6 +286,26 @@ public:
             return name == time_zone_name_;
         }
 
+        // Cache for prepared statements (per connection)
+        boost::asio::awaitable<std::tuple<boost::system::error_code, boost::mysql::statement *>> getStmt(boost::mysql::diagnostics& diag,
+                                                                                                              std::string_view query) {
+
+            auto& cached_stmt = stmt_cache_[query];
+            if (!cached_stmt.valid()) {
+                logQuery("prepare-stmt", query);
+                auto [ec, actual_stmt] = co_await connection_.async_prepare_statement(query, diag, tuple_awaitable);
+                if (ec) {
+                    stmt_cache_.erase(query);
+                    boost::system::error_code sec = ec;
+                    boost::mysql::statement *null_stmt = nullptr;
+                    co_return std::make_tuple(ec, null_stmt);
+                }
+                cached_stmt = std::move(actual_stmt);
+            }
+
+            co_return std::make_tuple(boost::system::error_code{}, &cached_stmt);
+        }
+
         boost::asio::ssl::context ssl_ctx_{boost::asio::ssl::context::tls_client};
         connection_t connection_;
     private:
@@ -205,6 +313,7 @@ public:
         bool taken_{false};
         std::string time_zone_name_;
         Mysqlpool& parent_;
+        StatementCache stmt_cache_;
         const boost::uuids::uuid uuid_{parent_.uuid_gen_()};
         std::chrono::steady_clock::time_point expires_{};
     };
@@ -320,15 +429,15 @@ public:
         if (!opts.time_zone.empty()
             && !conn.connectionWrapper()->isSameTimeZone(opts.time_zone)) {
 
-            // TODO: Cache this prepared statement
-            const auto zone_query = "SET time_zone=?";
-            logQuery("locale", zone_query, opts.time_zone);
-            auto [sec, stmt] = co_await conn.connection().async_prepare_statement(zone_query, diag, tuple_awaitable);
+            static const std::string_view ts_query = "SET time_zone=?";
+            auto [sec, stmt] = co_await conn.connectionWrapper()->getStmt(diag, ts_query);
             if (!handleError(sec, diag)) {
                 co_await conn.reconnect();
                 goto again;
             }
-            auto [ec] = co_await conn.connection().async_execute(stmt.bind(opts.time_zone), res, diag, tuple_awaitable);
+            assert(stmt != nullptr);
+            logQuery("locale", ts_query, opts.time_zone);
+            auto [ec] = co_await conn.connection().async_execute(stmt->bind(opts.time_zone), res, diag, tuple_awaitable);
             if (!handleError(ec, diag)) {
                 co_await conn.reconnect();
                 goto again;
@@ -344,14 +453,31 @@ public:
                 goto again;
             }
         } else {
-            logQuery("statement", query, args...);
-            auto [ec, stmt] = co_await conn.connection().async_prepare_statement(query, diag, tuple_awaitable);
-            if (!handleError(ec, diag)) {
+            auto [sec, stmt] = co_await conn.connectionWrapper()->getStmt(diag, query);
+            if (!handleError(sec, diag)) {
                 co_await conn.reconnect();
                 goto again;
             }
-            std::tie(ec) = co_await conn.connection().async_execute(stmt.bind(args...), res, diag, tuple_awaitable);\
-                if (!handleError(ec, diag)) {
+            assert(stmt != nullptr);
+            assert(stmt->valid());
+
+            logQuery("stmt", query, args...);
+            const auto [ec] = co_await conn.connection().async_execute(stmt->bind(args...), res, diag, tuple_awaitable);
+
+            // Close the statement before we evaluate the query. The error handling for the
+            // query may throw an exception, and we need to close the statement before that.
+            if (opts.close_prepared_statement) {
+                // Close the statement (if any error occurs, we will just log it and continue
+                logQuery("close-stmt", query);
+                const auto [csec] = co_await conn.connection().async_close_statement(*stmt, diag, tuple_awaitable);
+                if (sec) {
+                    handleError(sec, diag, false /* just report any error */);
+                }
+                conn.connectionWrapper()->stmtCache().erase(query);
+            }
+
+            // Handle the query error if any
+            if (!handleError(ec, diag)) {
                 co_await conn.reconnect();
                 goto again;
             }
@@ -467,25 +593,8 @@ private:
     }
 
     // If it returns false, connection to server is closed
-    bool handleError(const boost::system::error_code& ec, boost::mysql::diagnostics& diag);
+    bool handleError(const boost::system::error_code& ec, boost::mysql::diagnostics& diag, bool ignore = false);
 
-    template <typename... T>
-    std::string logArgs(const T... args) {
-        using namespace detail;
-        if constexpr (sizeof...(T)) {
-            std::stringstream out;
-            out << " | args: ";
-            auto col = 0;
-            ((out << (++col == 1 ? "" : ", ")  << args), ...);
-            return out.str();
-        }
-        return {};
-    }
-
-    template <typename... T>
-    void logQuery(std::string_view type, std::string_view query, T... bound) {
-        MYSQLPOOL_LOG_TRACE_("Executing " << type << " SQL query: " << query << logArgs(bound...));
-    }
 
     void startTimer();
     void onTimer(boost::system::error_code ec);

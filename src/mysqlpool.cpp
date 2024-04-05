@@ -208,13 +208,18 @@ boost::asio::awaitable<void> Mysqlpool::init() {
     co_return;
 }
 
-bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag)
+bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag, bool ignore)
 {
     if (ec) {
         MYSQLPOOL_LOG_DEBUG_("Statement failed with error:  "
                              << ec.message() << " (" << ec.value()
                              << "). Client: " << diag.client_message()
                              << ". Server: " << diag.server_message());
+
+        if (ignore) {
+            MYSQLPOOL_LOG_DEBUG_("Ignoring the error...");
+            return false;
+        }
 
         switch(ec.value()) {
         case static_cast<int>(mysql::common_server_errc::er_dup_entry):
@@ -334,6 +339,7 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
         ::boost::throw_exception(resolve_failed{"Failed to resolve database hostname"}, BOOST_CURRENT_LOCATION);
     }
 
+    connection_->clearCache();
     connection_->setState(Connection::State::CONNECTING);
     connection_->setTimeZone({});
     try {
@@ -370,6 +376,26 @@ void Mysqlpool::Connection::touch() {
     expires_ = std::chrono::steady_clock::now() + chrono::seconds{parent_.config_.connection_idle_limit_seconds};
 }
 
+// Impl. based from https://stackoverflow.com/questions/2262386/generate-sha256-with-openssl-and-c
+sha256_hash_t sha256(const std::span<const uint8_t> in) {
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    const ScopedExit bye{[context] {
+        EVP_MD_CTX_free(context);
+    }};
 
+    if (context != nullptr) {
+        if (EVP_DigestInit_ex(context, EVP_sha256(), nullptr) != 0) {
+            if (EVP_DigestUpdate(context, in.data(), in.size()) != 0) {
+                sha256_hash_t hash;
+                unsigned int lengthOfHash = 0;
+                if (EVP_DigestFinal_ex(context, hash.data(), &lengthOfHash) != 0) {
+                    assert(lengthOfHash == hash.size());
+                    return hash;
+                }
+            }
+        }
+    }
+    throw runtime_error{"sha256 failed!"};
+}
 
 } // namespace

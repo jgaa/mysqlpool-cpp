@@ -76,11 +76,12 @@ need. However, you will have to deal with the error handling yourself.
  - Semi automatic error handling, where recoverable errors can be retried automatically. If you use this, `co_await pool.exec(...)` will return when the query finally succeeds, or throw an exception if the retry count reach a configurable threshold.
  - Requests are queued if all the available connections are in use. The pool will open more connections in the background up to the limit.
  - The high level `exec` method handles connection allocation, per request options, error handling and reporting and data binding.
+ - Prepared Statements are handled automatically. Each connection has a cache of prepared statements, based on a cryptographic hash from the SQL query. If a new query is seen, a prepared statement is created and added to the cache before the query is executed.
  - All SQL queries can be logged, include the arguments to prepared statements.
  - Time Zone can be specified for a query. The pool will then ensure that the connection
  used for that request use the specified time zone. Useful for servers that handle
  requests for users from different time zones.
- - Flexible logging options
+ - Flexible logging options.
 
 ## Error handling
 
