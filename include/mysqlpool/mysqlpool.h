@@ -4,6 +4,7 @@
 #include <utility>
 #include <chrono>
 #include <span>
+#include <tuple>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
@@ -42,6 +43,18 @@ sha256_hash_t sha256(const std::span<const uint8_t> in);
 
 inline ::std::ostream& operator << (::std::ostream& out, const boost::mysql::blob_view& blob) {
     return out << "{ blob size: " << blob.size() << " }";
+}
+
+template<typename T>
+concept FieldViewContainer = std::ranges::range<T> && std::same_as<std::ranges::range_value_t<T>, boost::mysql::field_view>;
+
+template <FieldViewContainer T>
+std::ostream& operator << (std::ostream& out, const T& range) {
+    auto col = 0;
+    for (const auto& f : range) {
+        out << (++col == 1 ? "" : ", ") << f;
+    }
+    return out;
 }
 
 // https://stackoverflow.com/questions/68443804/c20-concept-to-check-tuple-like-types
@@ -141,6 +154,7 @@ struct Options {
 class Mysqlpool {
 public:
     using connection_t = boost::mysql::tcp_ssl_connection;
+
 
     template <typename... T>
     static std::string logArgs(const T... args) {
@@ -417,6 +431,10 @@ public:
         co_return res;
     }
 
+    template<typename T, typename... Args>
+    T getFirstArgument(T first, Args... args) {
+        return first;
+    }
 
     template<typename ...argsT>
     boost::asio::awaitable<results> exec(std::string_view query, const Options& opts, argsT ...args) {
@@ -461,8 +479,19 @@ public:
             assert(stmt != nullptr);
             assert(stmt->valid());
 
-            logQuery("stmt", query, args...);
-            const auto [ec] = co_await conn.connection().async_execute(stmt->bind(args...), res, diag, tuple_awaitable);
+            boost::system::error_code ec; // error status for query execution
+            if constexpr (sizeof...(args) == 1 && FieldViewContainer<decltype(getFirstArgument(args...))>) {
+                // Handle dynamic arguments as a range of field_view
+                logQuery("stmt-dynarg", query, args...);
+
+                auto arg = getFirstArgument(args...);
+                auto [err] = co_await conn.connection().async_execute(stmt->bind(arg.begin(), arg.end()), res, diag, tuple_awaitable);
+                ec = err;
+            } else {
+                logQuery("stmt", query, args...);
+                auto [err] = co_await conn.connection().async_execute(stmt->bind(args...), res, diag, tuple_awaitable);
+                ec = err;
+            }
 
             // Close the statement before we evaluate the query. The error handling for the
             // query may throw an exception, and we need to close the statement before that.
