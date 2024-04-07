@@ -114,7 +114,6 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-option(Boost_USE_STATIC_LIBS "Link statically with boost libraries" OFF)
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     system
     context
