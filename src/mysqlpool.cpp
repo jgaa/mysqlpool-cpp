@@ -208,7 +208,7 @@ boost::asio::awaitable<void> Mysqlpool::init() {
     co_return;
 }
 
-bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag, bool ignore)
+bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::diagnostics &diag, ErrorMode em)
 {
     if (ec) {
         MYSQLPOOL_LOG_DEBUG_("Statement failed with error:  "
@@ -216,7 +216,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
                              << "). Client: " << diag.client_message()
                              << ". Server: " << diag.server_message());
 
-        if (ignore) {
+        if (em == ErrorMode::IGNORE) {
             MYSQLPOOL_LOG_DEBUG_("Ignoring the error...");
             return false;
         }
@@ -230,9 +230,12 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
         case boost::system::errc::connection_reset:
         case boost::system::errc::connection_aborted:
         case boost::asio::error::operation_aborted:
-            MYSQLPOOL_LOG_DEBUG_("The error is recoverable if we re-try the query it may succeed...");
-            return false; // retry
-
+            if (em == ErrorMode::RETRY) {
+                MYSQLPOOL_LOG_DEBUG_("The error is recoverable if we re-try the query it may succeed...");
+                return false; // retry
+            }
+            MYSQLPOOL_LOG_DEBUG_("The error is recoverable but we will not re-try the query.");
+            ::boost::throw_exception(db_err{ec}, BOOST_CURRENT_LOCATION);
         default:
             MYSQLPOOL_LOG_DEBUG_("The error is non-recoverable");
             ::boost::throw_exception(db_err{ec}, BOOST_CURRENT_LOCATION);
@@ -259,7 +262,7 @@ void Mysqlpool::startTimer()
     });
 }
 
-void Mysqlpool::onTimer(boost::system::error_code ec)
+void Mysqlpool::onTimer(boost::system::error_code /*ec*/)
 {
     if (closed_) {
         MYSQLPOOL_LOG_DEBUG_("Mysqlpool::onTimer() - We are closing down the connection pool.");
@@ -267,7 +270,7 @@ void Mysqlpool::onTimer(boost::system::error_code ec)
     }
 
     MYSQLPOOL_LOG_TRACE_("onTimer()");
-    std::scoped_lock lock{mutex_};
+    const std::scoped_lock lock{mutex_};
     const auto watermark = chrono::steady_clock::now();
     for(auto& conn : connections_) {
         if (conn->isAvailable() && conn->expires() <= watermark) {
@@ -281,13 +284,13 @@ void Mysqlpool::onTimer(boost::system::error_code ec)
 }
 
 void Mysqlpool::release(Handle &h) noexcept {
-    if (h.connection_) {
+
+    if (h.hasConnection()) {
         MYSQLPOOL_LOG_TRACE_("DB Connection " << h.uuid() << " is being released from a handle.");
-        std::scoped_lock lock{mutex_};
-        assert(!h.connection_->isAvailable());
-        h.connection_->touch();
-        h.connection_->release();
+        const std::scoped_lock lock{mutex_};
+        h.release();
     }
+
     boost::system::error_code ec;
     semaphore_.cancel_one(ec);
 }
