@@ -353,15 +353,12 @@ public:
         /*! Transaction handle
          *
          *  A transaction handle is a RAII object you will
-         *  use to commit or rollback the transaction
-         *  before the object goes out of scope!
+         *  use to commit or rollback the transaction.
          *
-         *  To remind you, there is an assert in the destructor that
-         *  will fire if the transaction is not committed or rolled back
-         *  in non-release builds. In release build, `std::terminate()` will be called.
-         *  If a query fails with an exception, any open transaction is automatically
-         *  rolled back by closing the database connection. In that case the
-         *  transaction object shuld not be used, or just call rollback().
+         *  If the transaction is not committed or rolled back, it will be
+         *  rolled back when the transaction object goes out of scope.
+         *  If this happen, the Handle will also be released and
+         *  any instance of the Handle will be reset and not usable.
          *
          *  Once a transaction is committed or rolled back, the transaction
          *  object is empty and can not be used again, unless you re-assign
@@ -407,15 +404,49 @@ public:
                 co_return;
             }
 
-            ~Transaction() {
-                if (handle_ && handle_->failed()) {
-                    MYSQLPOOL_LOG_DEBUG_("Handle failed. Transaction not committed or rolled back!)");
-                    return;
-                }
-                assert(!handle_);
+            /*! Commit the transaction later
+             *
+             *  This will commit the transaction and release the connection in
+             *  another coroutine. The current handle will be reset and unusable.
+             *
+             *  The purpose of this method is to allow a transaction to be committed and
+             *  the database connection to be released back to the connection pool even
+             *  if the Handle object itself remains in scope.
+             */
+            void commitLater() {
+                assert(handle_);
                 if (handle_) {
-                    std::cerr << "Transaction not committed or rolled back!" << std::endl;
-                    std::terminate();
+                    handle_->commitAndReleaseLater();
+                    handle_ = {};
+                }
+            }
+
+            /*! Roll back the transaction later
+             *
+             *  This will roll back the transaction and release the connection in
+             *  another coroutine. The current handle will be reset and unusable.
+             *
+             *  The purpose of this method is to allow a transaction to be rolled back and
+             *  the database connection to be released back to the connection pool even
+             *  if the Handle object itself remains in scope.
+             */
+
+            void rollbackLater() {
+                assert(handle_);
+                if (handle_) {
+                    handle_->rollbackAndReleaseLater();
+                    handle_ = {};
+                }
+            }
+
+            ~Transaction() noexcept {
+                if (!empty()) {
+                    if (handle_ && handle_->failed()) {
+                        MYSQLPOOL_LOG_DEBUG_("Handle failed. Transaction not committed or rolled back!)");
+                        return;
+                    }
+                    assert(!handle_);
+                    handle_->rollbackAndReleaseLater();
                 }
             }
 
@@ -480,7 +511,7 @@ public:
         }
 
         bool empty() const noexcept {
-            return connection_ != nullptr;
+            return connection_ == nullptr;
         }
 
         void reset() {
@@ -691,6 +722,26 @@ public:
             return ErrorMode::ALWAYS_FAIL;
         }
 
+        void commitAndReleaseLater() noexcept {
+            if (!empty()) {
+                assert(has_transaction_);
+                auto *parent = parent_; // parent_ will be reset by std::move()
+                parent->doAndRelease(std::move(*this), [](Handle& handle) -> boost::asio::awaitable<void> {
+                    co_await handle.commit();
+                });
+            }
+        }
+
+        void rollbackAndReleaseLater() noexcept {
+            if (!empty()) {
+                assert(has_transaction_);
+                auto *parent = parent_; // parent_ will be reset by std::move()
+                parent->doAndRelease(std::move(*this), [](Handle& handle) -> boost::asio::awaitable<void> {
+                    co_await handle.rollback();
+                });
+            }
+        }
+
         Mysqlpool *parent_{};
         Connection *connection_{};
         boost::uuids::uuid uuid_;
@@ -698,31 +749,24 @@ public:
         bool failed_ = false;
     };
 
+    void doAndRelease(Handle && handle, auto fn) noexcept {
+        try {
+            boost::asio::co_spawn(ctx_, [h=std::move(handle), fn=std::move(fn)]() mutable -> boost::asio::awaitable<void> {
+                try {
+                    co_await fn(h);
+                } catch (const std::exception& ex) {
+                    MYSQLPOOL_LOG_ERROR_("Request failed with exception: " << ex.what());
+                }
+                // When h goes out of scope, it will be returned to the connection pool
+            }, boost::asio::detached);
+        } catch (const std::exception& ex) {
+            MYSQLPOOL_LOG_ERROR_("doAndRelease: Failed to start coroutine: " << ex.what());
+        } catch (...) {
+            MYSQLPOOL_LOG_ERROR_("doAndRelease: Failed to start coroutine");
+        }
+    }
+
     [[nodiscard]] boost::asio::awaitable<Handle> getConnection(const Options& opts = {});
-
-    // template<tuple_like T>
-    // [[nodiscard]] boost::asio::awaitable<results>
-    // exec(std::string_view query, const T& tuple) {
-
-    //     results res;
-    //     co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
-    //         res = co_await exec(query, args...);
-    //     }, tuple);
-
-    //     co_return res;
-    // }
-
-    // template<tuple_like T>
-    // [[nodiscard]] boost::asio::awaitable<results>
-    // exec(std::string_view query,  const Options& opts, const T& tuple) {
-
-    //     results res;
-    //     co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
-    //         res = co_await exec(query, opts, args...);
-    //     }, tuple);
-
-    //     co_return res;
-    // }
 
     template<typename ...argsT>
     [[nodiscard]] boost::asio::awaitable<results>
