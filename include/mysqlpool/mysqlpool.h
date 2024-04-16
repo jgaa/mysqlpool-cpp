@@ -716,8 +716,11 @@ public:
     private:
         ErrorMode errorMode(const Options& opts) const noexcept {
             if (opts.reconnect_and_retry_query) {
-                assert(!has_transaction_);
-                return ErrorMode::EM_RETRY;
+                if (has_transaction_) {
+                    MYSQLPOOL_LOG_TRACE_("Handle::errorMode: Ignoring 'reconnect_and_retry_query' option as a transaction is active");
+                } else {
+                    return ErrorMode::EM_RETRY;
+                }
             }
             return ErrorMode::EM_ALWAYS_FAIL;
         }
