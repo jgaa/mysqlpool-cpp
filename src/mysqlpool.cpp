@@ -216,7 +216,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
                              << "). Client: " << diag.client_message()
                              << ". Server: " << diag.server_message());
 
-        if (em == ErrorMode::IGNORE) {
+        if (em == ErrorMode::EM_IGNORE) {
             MYSQLPOOL_LOG_DEBUG_("Ignoring the error...");
             return false;
         }
@@ -230,7 +230,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
         case boost::system::errc::connection_reset:
         case boost::system::errc::connection_aborted:
         case boost::asio::error::operation_aborted:
-            if (em == ErrorMode::RETRY) {
+            if (em == ErrorMode::EM_RETRY) {
                 MYSQLPOOL_LOG_DEBUG_("The error is recoverable if we re-try the query it may succeed...");
                 return false; // retry
             }

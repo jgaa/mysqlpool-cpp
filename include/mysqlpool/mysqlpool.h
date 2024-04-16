@@ -161,9 +161,9 @@ T getFirstArgument(T first, ArgsT...) {
 
 class Mysqlpool {
     enum class ErrorMode {
-        IGNORE,
-        RETRY,
-        ALWAYS_FAIL
+        EM_IGNORE, // Cant use "IGNORE" as it clashes with one of Microsofts *many* cursed macros!
+        EM_RETRY,
+        EM_ALWAYS_FAIL
     };
 
 
@@ -647,7 +647,7 @@ public:
                         logQuery("close-stmt", query);
                         const auto [csec] = co_await connection().async_close_statement(*stmt, diag, tuple_awaitable);
                         if (sec) {
-                            handleError(sec, diag, ErrorMode::IGNORE);
+                            handleError(sec, diag, ErrorMode::EM_IGNORE);
                         }
                         connectionWrapper()->stmtCache().erase(query);
                     }
@@ -717,9 +717,9 @@ public:
         ErrorMode errorMode(const Options& opts) const noexcept {
             if (opts.reconnect_and_retry_query) {
                 assert(!has_transaction_);
-                return ErrorMode::RETRY;
+                return ErrorMode::EM_RETRY;
             }
-            return ErrorMode::ALWAYS_FAIL;
+            return ErrorMode::EM_ALWAYS_FAIL;
         }
 
         void commitAndReleaseLater() noexcept {
@@ -885,7 +885,7 @@ private:
     // If it returns false, connection to server is closed
     static bool handleError(const boost::system::error_code& ec,
                             boost::mysql::diagnostics& diag,
-                            ErrorMode mode = ErrorMode::ALWAYS_FAIL);
+                            ErrorMode mode = ErrorMode::EM_ALWAYS_FAIL);
 
 
     void startTimer();
