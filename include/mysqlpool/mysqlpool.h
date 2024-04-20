@@ -445,7 +445,7 @@ public:
                         MYSQLPOOL_LOG_DEBUG_("Handle failed. Transaction not committed or rolled back!)");
                         return;
                     }
-                    assert(!handle_);
+                    assert(handle_);
                     handle_->rollbackAndReleaseLater();
                 }
             }
@@ -476,6 +476,8 @@ public:
             : parent_{std::exchange(v.parent_, {})}
             , connection_{std::exchange(v.connection_, {})}
             , uuid_{std::exchange(v.uuid_, {})}
+            , has_transaction_{std::exchange(v.has_transaction_, false)}
+            , failed_{std::exchange(v.failed_, false)}
         {
         }
 
@@ -489,12 +491,11 @@ public:
 
         Handle& operator = (const Handle) = delete;
         Handle& operator = (Handle && v) noexcept {
-            parent_ = v.parent_;
-            v.parent_ = {};
-            connection_ = v.connection_;
-            v.connection_ = {};
-            v.uuid_ = uuid_;
-            uuid_ = {};
+            parent_ = std::exchange(v.parent_, {});
+            connection_ = std::exchange(v.connection_, {});
+            uuid_ = std::exchange(v.uuid_, {});
+            has_transaction_ = std::exchange(v.has_transaction_, false);
+            failed_ = std::exchange(v.failed_, false);
             return *this;
         }
 
