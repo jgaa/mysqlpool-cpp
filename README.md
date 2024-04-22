@@ -8,7 +8,7 @@ The library require C++20 and use C++20 coroutines.
 
 ## Status
 
-First BETA release.
+Second BETA release.
 
 Please create an issue if you find any problems or if you have suggestions
 on how to make the library more useful.
