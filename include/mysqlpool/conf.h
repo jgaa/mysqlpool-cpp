@@ -2,6 +2,10 @@
 
 #include <string>
 #include <cstdint>
+#include <vector>
+#include <string_view>
+#include <functional>
+#include <boost/asio/ssl.hpp>
 
 #include "mysqlpool/config.h"
 
@@ -10,6 +14,57 @@ namespace jgaa::mysqlpool {
 std::string getEnv(const std::string& name, std::string defaultValue = {});
 
 /** Configuration for an instance of mysqlpool. */
+
+struct TlsConfig {
+    using password_cb_t = std::function<std::string (
+        std::size_t, // The maximum size for a password.
+        boost::asio::ssl::context_base::password_purpose // Whether password is for reading or writing.
+        )>;
+
+    /*! TLS version to use.
+     *
+     *  If unset, it use the default client settings for boost.asio (boost::asio::ssl::context_base::tls_client)
+     *
+     *  One of:
+     *      - "" (empty string): Use the default settings for the client
+     *      - "": Use TLS 1.2
+     *      - "tls_1.3": Use TLS 1.3
+     */
+    std::string version;
+
+    /*! Allow SSL versions. They are all depricated and should not be allowed */
+    bool allow_ssl = false;
+
+    /*! Allow TLS 1.1 */
+    bool allow_tls_1_1 = false;
+
+    /*! Allow TLS 1.2 */
+    bool allow_tls_1_2 = true;
+
+    /*! Allow TLS 1.3 */
+    bool allow_tls_1_3 = true;
+
+    /*! Very often the peer will use a self-signed certificate.
+     *
+     * Must be enabled if you use a public database server on the internet.
+     */
+    bool verify_peer = false;
+
+    /*! CA files for verification */
+    std::vector<std::string> ca_files;
+
+    /*! CA paths for verification */
+    std::vector<std::string> ca_paths;
+
+    /*! Cert to use for the client */
+    std::string cert_file;
+
+    /*! Key to use for the client */
+    std::string key_file;
+
+    /*! Password callback if the private key use a password */
+    password_cb_t password_callback;
+};
 
 struct DbConfig {
     /// Host where the DB server is running.
@@ -44,7 +99,10 @@ struct DbConfig {
      *  - enable: Use TLS if the server supports it, fall back to non-encrypted connection if it does not.
      *  - require: Always use TLS; abort the connection if the server does not support it.
      */
-    std::string ssl_mode = getEnv(MYSQLPOOL_DB_TLS_MODE, DEFAULT_MYSQLPOOL_TLS_MODE);
+    std::string tls_mode = getEnv(MYSQLPOOL_DB_TLS_MODE, DEFAULT_MYSQLPOOL_TLS_MODE);
+
+    /*! TLS configuration */
+    TlsConfig tls;
 
     /*! Number of times to retry connecting to the database
      *

@@ -5,6 +5,8 @@
 #include <chrono>
 #include <span>
 #include <tuple>
+#include <algorithm>
+#include <ranges>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
@@ -336,13 +338,19 @@ public:
             co_return std::make_tuple(boost::system::error_code{}, &cached_stmt);
         }
 
-        boost::asio::ssl::context ssl_ctx_{boost::asio::ssl::context::tls_client};
+        connection_t& connection() {
+            return connection_;
+        }
+
+private:
+        static boost::asio::ssl::context getSslContext(const TlsConfig& config);
+
+        Mysqlpool& parent_;
+        boost::asio::ssl::context ssl_ctx_{getSslContext(parent_.config_.tls)};
         connection_t connection_;
-    private:
         std::atomic<State> state_{State::CLOSED};
         bool taken_{false};
         std::string time_zone_name_;
-        Mysqlpool& parent_;
         StatementCache stmt_cache_;
         const boost::uuids::uuid uuid_{parent_.uuid_gen_()};
         std::chrono::steady_clock::time_point expires_{};
@@ -508,7 +516,7 @@ public:
         // Return the mysql connection
         connection_t& connection() {
             assert(connection_);
-            return connection_->connection_;
+            return connection_->connection();
         }
 
         bool empty() const noexcept {
@@ -872,6 +880,10 @@ private:
 
             } else {
                 //co_return std::move(conn);
+                MYSQLPOOL_LOG_DEBUG_("Connected to " << ep.endpoint()
+                                                     << " as user " << dbUser()
+                                                     << " with database " << config_.database
+                                                     << (conn.uses_ssl() ? " using TLS" : " without TLS"));
                 ++num_open_connections_;
                 co_return;
             }

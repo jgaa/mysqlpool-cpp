@@ -138,7 +138,7 @@ boost::asio::awaitable<void> Mysqlpool::close()
             for(auto &conn : connections_) {
                 if (conn->state() == Connection::State::CONNECTED) {
                     MYSQLPOOL_LOG_INFO_("Closing socket for db-connection " << conn->uuid());
-                    conn->connection_.stream().lowest_layer().close();
+                    conn->connection().stream().lowest_layer().close();
                 }
             }
             co_return;
@@ -183,8 +183,8 @@ boost::asio::awaitable<void> Mysqlpool::init() {
     MYSQLPOOL_LOG_DEBUG_("Mysqlpool::init Connecting to mysql compatible database at "
                          << config_.host << ':' << config_.port
                          << " as user " << dbUser() << " with database "
-                         << config_.database);
-
+                         << config_.database
+                         << " and TLS MODE " << config_.tls_mode);
 
     connections_.reserve(config_.max_connections);
     const auto initial_connections = min(config_.min_connections, config_.min_connections);
@@ -192,7 +192,7 @@ boost::asio::awaitable<void> Mysqlpool::init() {
     for(size_t i = 0; i < initial_connections; ++i) {
         try {
             auto conn = make_unique<Connection>(*this);
-            co_await connect(conn->connection_, endpoints, 0, true);
+            co_await connect(conn->connection(), endpoints, 0, true);
             conn->setState(Connection::State::CONNECTED);
             connections_.emplace_back(std::move(conn));
         } catch (const std::exception& ex) {
@@ -297,15 +297,15 @@ void Mysqlpool::release(Handle &h) noexcept {
 
 boost::mysql::ssl_mode Mysqlpool::sslMode() const
 {
-    if (config_.ssl_mode == "disable") {
+    if (config_.tls_mode == "disable") {
         return boost::mysql::ssl_mode::disable;
-    } else if (config_.ssl_mode == "enable") {
+    } else if (config_.tls_mode == "enable") {
         return boost::mysql::ssl_mode::enable;
-    } else if (config_.ssl_mode == "require") {
+    } else if (config_.tls_mode == "require") {
         return boost::mysql::ssl_mode::require;
     }
 
-    MYSQLPOOL_LOG_WARN_("Unknown SSL mode: " << config_.ssl_mode);
+    MYSQLPOOL_LOG_WARN_("Unknown SSL mode: " << config_.tls_mode);
     return boost::mysql::ssl_mode::require;
 }
 
@@ -334,7 +334,8 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
                          << uuid()
                          << " to the database server at "
                          << parent_->config_.host << ":"
-                         << parent_->config_.port);
+                         << parent_->config_.port)
+                         << " with TLS mode " << parent_->config_.tls_mode;
 
     if (endpoints.empty()) {
         MYSQLPOOL_LOG_ERROR_("Failed to resolve hostname "
@@ -346,7 +347,7 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
     connection_->setState(Connection::State::CONNECTING);
     connection_->setTimeZone({});
     try {
-        co_await parent_->connect(connection_->connection_, endpoints, 0, true);
+        co_await parent_->connect(connection_->connection(), endpoints, 0, true);
         connection_->setState(Connection::State::CONNECTED);
     } catch(const std::runtime_error& ex) {
         connection_->setState(Connection::State::CLOSED);
@@ -377,6 +378,62 @@ void Mysqlpool::Connection::setState(State state) {
 void Mysqlpool::Connection::touch() {
     MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " is touched.");
     expires_ = std::chrono::steady_clock::now() + chrono::seconds{parent_.config_.connection_idle_limit_seconds};
+}
+
+asio::ssl::context Mysqlpool::Connection::getSslContext(const TlsConfig &config) {
+    auto tls_mode = boost::asio::ssl::context::tls_client;
+
+    if (config.version == "") {
+        ;
+    } else if (config.version == "tls_1.2") {
+        tls_mode = boost::asio::ssl::context::tlsv12_client;
+    } else if (config.version == "tls_1.3") {
+        tls_mode = boost::asio::ssl::context::tlsv13_client;
+    } else {
+        throw std::runtime_error{"Invalid TLS version: " + config.version};
+    }
+
+    boost::asio::ssl::context ctx{tls_mode};
+
+    if (!config.allow_ssl) {
+        ctx.set_options(boost::asio::ssl::context::no_sslv2 | boost::asio::ssl::context::no_sslv3);
+    }
+    if (!config.allow_tls_1_1) {
+        ctx.set_options(boost::asio::ssl::context::no_tlsv1_1);
+    }
+    if (!config.allow_tls_1_2) {
+        ctx.set_options(boost::asio::ssl::context::no_tlsv1_2);
+    }
+    if (!config.allow_tls_1_3) {
+        ctx.set_options(boost::asio::ssl::context::no_tlsv1_3);
+    }
+    if (config.verify_peer) {
+        ctx.set_verify_mode(boost::asio::ssl::verify_peer);
+
+        std::ranges::for_each(config.ca_files, [&ctx](const auto& file) {
+            ctx.load_verify_file(file);
+        });
+
+        std::ranges::for_each(config.ca_paths, [&ctx](const auto& path) {
+            ctx.add_verify_path(path);
+        });
+
+    } else {
+        ctx.set_verify_mode(boost::asio::ssl::verify_none);
+    }
+
+    if (!config.cert_file.empty()) {
+        ctx.use_certificate_file(config.cert_file, boost::asio::ssl::context::pem);
+    }
+    if (!config.key_file.empty()) {
+        ctx.use_private_key_file(config.key_file, boost::asio::ssl::context::pem);
+    }
+
+    if (config.password_callback) {
+        ctx.set_password_callback(config.password_callback);
+    }
+
+    return std::move(ctx);
 }
 
 // Impl. based from https://stackoverflow.com/questions/2262386/generate-sha256-with-openssl-and-c
