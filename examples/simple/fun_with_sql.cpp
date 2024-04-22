@@ -162,9 +162,61 @@ boost::asio::awaitable<void> add_and_query_data(mp::Mysqlpool& pool) {
     res = co_await pool.exec("SELECT id, name, DATE_FORMAT(created_date, '%Y-%m-%d %H:%m') FROM test_table", opts);
     print(res.rows());
 
-    co_await pool.exec("DROP TABLE test_table");
     co_return;
 }
+
+boost::asio::awaitable<void> use_transaction(mp::Mysqlpool& pool) {
+
+    // Very often, you will need transactions in order to commit
+    // several related queries to the database.
+    // This is one area where the traditional SQL database servers
+    // shine compared to most NoSQL databases.
+
+    // In order to use transactions, we need to use a Handle to a Connection
+    // and keep that handle instance alive until the transaction is done.
+    // In most cases that simply means to first create the handle, and
+    // then the transaction.
+
+    // Create the handle
+    auto handle = co_await pool.getConnection();
+
+    // Create the transaction
+    auto trx = co_await handle.transaction();
+
+    // Make some queries - typically INSERT, UPDATE or DELETE
+    // Note that you must use the `handle` instance to execute the queries,
+    // since the transaction is bound to that handle.
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 5, "George");
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 6, "Hannah");
+
+    // Now you can commit the transaction or roll it back.
+    // If the trx instance goes out of scope with an active transaction,
+    // the transaction is rolled back.
+    co_await trx.commit();
+
+    // You cannot use the trx instance after commit or rollback, but the handle is
+    // still valid. You can use it directly with `exec(...)` or you can create
+    // a new transaction
+
+    co_return;
+}
+
+boost::asio::awaitable<void> use_the_same_connection(mp::Mysqlpool& pool) {
+    // Some times you may want to use the same connection for several queries
+    // This can be done by using the same handle for several queries.
+
+    // Create the handle
+    auto handle = co_await pool.getConnection();
+
+    // Make some queries
+    // Note that we use `handle` to execute the queries.
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 7, "Ivan");
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 8, "Jane");
+
+    // Using the same connection lets you set specific options on that connection,
+    // and it guarantees that the queries are executed in sequential order.
+}
+
 
 // Entry point from main()
 void run_examples(const mp::DbConfig& config){
@@ -190,7 +242,10 @@ void run_examples(const mp::DbConfig& config){
             co_await get_db_version_using_boost_mysql(pool);
             co_await get_db_version(pool);
             co_await add_and_query_data(pool);
+            co_await use_transaction(pool);
+            co_await use_the_same_connection(pool);
 
+            co_await pool.exec("DROP TABLE test_table");
             // Gracefully shut down the connection-pool.
             co_await pool.close();
         } catch (const exception& ex) {
