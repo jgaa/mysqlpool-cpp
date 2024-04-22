@@ -196,7 +196,7 @@ boost::asio::awaitable<void> use_transaction(mp::Mysqlpool& pool) {
 
     // You cannot use the trx instance after commit or rollback, but the handle is
     // still valid. You can use it directly with `exec(...)` or you can create
-    // a new transaction
+    // a new transaction.
 
     co_return;
 }
