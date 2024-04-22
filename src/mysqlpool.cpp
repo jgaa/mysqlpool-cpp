@@ -334,8 +334,8 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
                          << uuid()
                          << " to the database server at "
                          << parent_->config_.host << ":"
-                         << parent_->config_.port)
-                         << " with TLS mode " << parent_->config_.tls_mode;
+                         << parent_->config_.port
+                         << " with TLS mode " << parent_->config_.tls_mode);
 
     if (endpoints.empty()) {
         MYSQLPOOL_LOG_ERROR_("Failed to resolve hostname "
