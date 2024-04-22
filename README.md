@@ -8,7 +8,7 @@ The library require C++20 and use C++20 coroutines.
 
 ## Status
 
-First BETA release.
+Second BETA release.
 
 Please create an issue if you find any problems or if you have suggestions
 on how to make the library more useful.
@@ -77,6 +77,8 @@ need. However, you will have to deal with the error handling yourself.
  - Requests are queued if all the available connections are in use. The pool will open more connections in the background up to the limit.
  - The high level `exec` method handles connection allocation, per request options, error handling and reporting and data binding.
  - Prepared Statements are handled automatically. Each connection has a cache of prepared statements, based on a cryptographic hash from the SQL query. If a new query is seen, a prepared statement is created and added to the cache before the query is executed.
+ - Sequential execution of queries by using the same connection.
+ - Transactions with automatic rollback if the transaction is not committed.
  - All SQL queries can be logged, include the arguments to prepared statements.
  - Time Zone can be specified for a query. The pool will then ensure that the connection
  used for that request use the specified time zone. Useful for servers that handle
@@ -365,6 +367,83 @@ boost::asio::awaitable<void> add_and_query_data(mp::Mysqlpool& pool) {
 
 ```
 
+You can execute a series of queries using the same database connection.
+
+```C++
+
+boost::asio::awaitable<void> use_the_same_connection(mp::Mysqlpool& pool) {
+    // Some times you may want to use the same connection for several queries
+    // This can be done by using the same handle for several queries.
+
+    // Create the handle
+    auto handle = co_await pool.getConnection();
+
+    // Make some queries
+    // Note that we use `handle` to execute the queries.
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 7, "Ivan");
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 8, "Jane");
+
+    // Using the same connection lets you set specific options on that connection,
+    // and it guarantees that the queries are executed in sequential order.
+}
+
+```
+
+Often you'll need transactions to ensure consistency. Either all queries in the
+transaction are successful, or all of them fail. A transaction also allows you
+to roll back the changes if something else in your application fails.
+
+A transaction is handled by a transaction object. Normally you will create the
+transaction object, do some queries and then commit the transaction. If you
+don't commit a transaction by the time the transaction object goes out of scope,
+the transaction is rolled back.
+
+```C++
+
+boost::asio::awaitable<void> use_transaction(mp::Mysqlpool& pool) {
+
+    // Very often, you will need transactions in order to commit
+    // several related queries to the database.
+    // This is one area where the traditional SQL database servers
+    // shine compared to most NoSQL databases.
+
+    // In order to use transactions, we need to use a Handle to a Connection
+    // and keep that handle instance alive until the transaction is done.
+    // In most cases that simply means to first create the handle, and
+    // then the transaction.
+
+    // Create the handle
+    auto handle = co_await pool.getConnection();
+
+    // Create the transaction
+    auto trx = co_await handle.transaction();
+
+    // Make some queries - typically INSERT, UPDATE or DELETE
+    // Note that you must use the `handle` instance to execute the queries,
+    // since the transaction is bound to that handle.
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 5, "George");
+    co_await handle.exec("INSERT INTO test_table (id, name) VALUES (?, ?)", 6, "Hannah");
+
+    // Now you can commit the transaction or roll it back.
+    // If the trx instance goes out of scope with an active transaction,
+    // the transaction is rolled back.
+    co_await trx.commit();
+
+    // You cannot use the trx instance after commit or rollback, but the handle is
+    // still valid. You can use it directly with `exec(...)` or you can create
+    // a new transaction.
+
+    co_return;
+}
+
+```
+
+## TLS
+
+If you enable TLS using the `DbConfig.tls_mode` option, it should work without
+any further tweaks in most situations. If you use a DB-server on an insecure
+network, you may harden the TLS settings using the [DbConfig.tls](include/mysqlpool/conf.h) settings.
+
 ## Building
 
 You can build the library using CMake.
@@ -395,4 +474,3 @@ add_subdirectory(dependencies/mysqlpool-cpp)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/dependencies/mysqlpool-cpp/include)
 
 ```
-

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED MYSQLPOOL_VERSION)
-    set(MYSQLPOOL_VERSION 0.3.0)
+    set(MYSQLPOOL_VERSION 0.4.0)
 endif()
 
 project(mysqlpool-cpp
@@ -89,6 +89,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(MYSQLPOOL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+
+if(WIN32)
+    add_compile_options(-D_WIN32_WINNT=0x0601 -DWINVER=0x0601 -DWIN32_LEAN_AND_MEAN=1)
+endif()
 
 message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 

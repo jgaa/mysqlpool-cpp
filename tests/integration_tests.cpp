@@ -161,21 +161,70 @@ TEST(Functional, TimeZone) {
 
     auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
         jgaa::mysqlpool::Options opts;
-        opts.locale_name = "UTC";
+        opts.time_zone = "UTC";
 
         auto res = co_await db.exec("SELECT @@session.time_zone");
         EXPECT_TRUE(res.has_value() && !res.rows().empty());
         if (res.has_value() && !res.rows().empty()) {
             const auto zone = res.rows().front().at(0).as_string();
-            EXPECT_NE(zone, opts.locale_name);
+            EXPECT_NE(zone, opts.time_zone);
         }
 
         res = co_await db.exec("SELECT @@session.time_zone", opts);
         EXPECT_TRUE(res.has_value() && !res.rows().empty());
         if (res.has_value() && !res.rows().empty()) {
             const auto zone = res.rows().front().at(0).as_string();
-            EXPECT_EQ(zone, opts.locale_name);
+            EXPECT_EQ(zone, opts.time_zone);
         }
+        co_return true;
+    };
+
+    run_async_test(test, false);
+}
+
+TEST (Functional, TransactionRollback) {
+
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
+        Options opts{false};
+        auto handle = co_await db.getConnection({});
+
+        auto trx = co_await handle.transaction();
+
+        auto res = co_await handle.exec(R"(INSERT INTO mysqlpool (name) VALUES (?))", opts, "Bean");
+        EXPECT_EQ(res.affected_rows(), 1);
+
+        EXPECT_FALSE(trx.empty());
+        co_await trx.rollback();
+        EXPECT_TRUE(trx.empty());
+
+        res = co_await handle.exec(R"(SELECT COUNT(*) FROM mysqlpool WHERE name = ?)", opts, "Bean");
+        EXPECT_EQ(res.rows().front().at(0).as_int64(), 0);
+        co_return true;
+    };
+
+    run_async_test(test, false);
+}
+
+TEST (Functional, TransactionCommit) {
+
+    auto test = [](Mysqlpool& db) -> boost::asio::awaitable<bool> {
+
+        Options opts{false};
+
+        auto handle = co_await db.getConnection({});
+
+        auto trx = co_await handle.transaction();
+
+        auto res = co_await handle.exec(R"(INSERT INTO mysqlpool (name) VALUES (?))", opts, "Bean");
+        EXPECT_EQ(res.affected_rows(), 1);
+
+        EXPECT_FALSE(trx.empty());
+        co_await trx.commit();
+        EXPECT_TRUE(trx.empty());
+
+        res = co_await handle.exec(R"(SELECT COUNT(*) FROM mysqlpool WHERE name = ?)", opts, "Bean");
+        EXPECT_EQ(res.rows().front().at(0).as_int64(), 1);
         co_return true;
     };
 

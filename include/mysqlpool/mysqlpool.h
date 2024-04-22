@@ -5,6 +5,8 @@
 #include <chrono>
 #include <span>
 #include <tuple>
+#include <algorithm>
+#include <ranges>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
@@ -143,6 +145,9 @@ using results = boost::mysql::results;
 constexpr auto tuple_awaitable = boost::asio::as_tuple(boost::asio::use_awaitable);
 
 struct Options {
+
+    Options(bool reconnect = true) : reconnect_and_retry_query{reconnect} {}
+
     bool reconnect_and_retry_query{true};
     std::string time_zone;
     bool throw_on_empty_connection{false};
@@ -151,10 +156,21 @@ struct Options {
     bool close_prepared_statement{false};
 };
 
+template<typename T, typename ...ArgsT>
+T getFirstArgument(T first, ArgsT...) {
+    return first;
+}
+
 class Mysqlpool {
+    enum class ErrorMode {
+        EM_IGNORE, // Cant use "IGNORE" as it clashes with one of Microsofts *many* cursed macros!
+        EM_RETRY,
+        EM_ALWAYS_FAIL
+    };
+
+
 public:
     using connection_t = boost::mysql::tcp_ssl_connection;
-
 
     template <typename... T>
     static std::string logArgs(const T... args) {
@@ -209,7 +225,7 @@ public:
             cache_.erase(makeHash(key));
         }
 
-        sha256_hash_t makeHash(const std::span<const char> key) {
+        static sha256_hash_t makeHash(const std::span<const char> key) {
             return sha256(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>(key.data()), key.size()));
         }
 
@@ -217,8 +233,7 @@ public:
         struct ArrayHasher {
             std::size_t operator()(const sha256_hash_t& key) const {
                 /* I might my wrong, but it makes no sense to me to re-hash a cryptographic hash */
-                size_t val = *reinterpret_cast<const size_t *>(key.data());
-                return val;
+                return *reinterpret_cast<const size_t *>(key.data());
             }
         };
         std::unordered_map<sha256_hash_t, boost::mysql::statement, ArrayHasher> cache_;
@@ -233,8 +248,12 @@ public:
         };
 
         Connection(Mysqlpool& parent);
-
+        Connection(const Connection&) = delete;
+        Connection(Connection&&) = delete;
         ~Connection();
+
+        Connection& operator = (const Connection&) = delete;
+        Connection& operator = (Connection&&) = delete;
 
         State state() const noexcept {
             return state_;
@@ -248,7 +267,7 @@ public:
 
         void close() {
             setState(State::CLOSING);
-            connection_.async_close([this](boost::system::error_code ec) {
+            connection_.async_close([this](boost::system::error_code /*ec*/) {
                 parent_.closed(*this);
             });
         }
@@ -291,7 +310,7 @@ public:
         }
 
         // NB: not synchronized. Assumes safe access when it's not being changed.
-        const std::string timeZone() const {
+        std::string timeZone() const {
             return time_zone_name_;
         }
 
@@ -301,9 +320,8 @@ public:
         }
 
         // Cache for prepared statements (per connection)
-        boost::asio::awaitable<std::tuple<boost::system::error_code, boost::mysql::statement *>> getStmt(boost::mysql::diagnostics& diag,
-                                                                                                              std::string_view query) {
-
+        boost::asio::awaitable<std::tuple<boost::system::error_code, boost::mysql::statement *>>
+        getStmt(boost::mysql::diagnostics& diag, std::string_view query) {
             auto& cached_stmt = stmt_cache_[query];
             if (!cached_stmt.valid()) {
                 logQuery("prepare-stmt", query);
@@ -320,13 +338,19 @@ public:
             co_return std::make_tuple(boost::system::error_code{}, &cached_stmt);
         }
 
-        boost::asio::ssl::context ssl_ctx_{boost::asio::ssl::context::tls_client};
+        connection_t& connection() {
+            return connection_;
+        }
+
+private:
+        static boost::asio::ssl::context getSslContext(const TlsConfig& config);
+
+        Mysqlpool& parent_;
+        boost::asio::ssl::context ssl_ctx_{getSslContext(parent_.config_.tls)};
         connection_t connection_;
-    private:
         std::atomic<State> state_{State::CLOSED};
         bool taken_{false};
         std::string time_zone_name_;
-        Mysqlpool& parent_;
         StatementCache stmt_cache_;
         const boost::uuids::uuid uuid_{parent_.uuid_gen_()};
         std::chrono::steady_clock::time_point expires_{};
@@ -334,6 +358,125 @@ public:
 
     class Handle {
     public:
+        /*! Transaction handle
+         *
+         *  A transaction handle is a RAII object you will
+         *  use to commit or rollback the transaction.
+         *
+         *  If the transaction is not committed or rolled back, it will be
+         *  rolled back when the transaction object goes out of scope.
+         *  If this happen, the Handle will also be released and
+         *  any instance of the Handle will be reset and not usable.
+         *
+         *  Once a transaction is committed or rolled back, the transaction
+         *  object is empty and can not be used again, unless you re-assign
+         *  a new transaction to it.
+         */
+        class Transaction {
+        public:
+            Transaction(Handle& h, bool readOnly)
+                : handle_{&h}, read_only_{readOnly}
+            {
+            }
+
+            Transaction(const Transaction&) = delete;
+            Transaction(Transaction&& t) noexcept
+                : handle_{t.handle_}, read_only_{t.read_only_} {
+                assert(handle_);
+                t.handle_ = {};
+            };
+
+            /*! Commit the current transaction */
+            boost::asio::awaitable<void> commit() {
+                assert(handle_);
+                if (handle_) {
+                    if (handle_->failed()) {
+                        if (!read_only_) {
+                            throw std::runtime_error{"The transaction cannot be committed as a query has already failed!"};
+                        }
+                    } else {
+                        co_await handle_->commit();
+                    }
+                }
+                handle_ = {};
+                co_return;
+            }
+
+            /*! Roll back the current transaction */
+            boost::asio::awaitable<void> rollback() {
+                assert(handle_);
+                if (handle_ && !handle_->failed()) {
+                    co_await handle_->rollback();
+                }
+                handle_ = {};
+                co_return;
+            }
+
+            /*! Commit the transaction later
+             *
+             *  This will commit the transaction and release the connection in
+             *  another coroutine. The current handle will be reset and unusable.
+             *
+             *  The purpose of this method is to allow a transaction to be committed and
+             *  the database connection to be released back to the connection pool even
+             *  if the Handle object itself remains in scope.
+             */
+            void commitLater() {
+                assert(handle_);
+                if (handle_) {
+                    handle_->commitAndReleaseLater();
+                    handle_ = {};
+                }
+            }
+
+            /*! Roll back the transaction later
+             *
+             *  This will roll back the transaction and release the connection in
+             *  another coroutine. The current handle will be reset and unusable.
+             *
+             *  The purpose of this method is to allow a transaction to be rolled back and
+             *  the database connection to be released back to the connection pool even
+             *  if the Handle object itself remains in scope.
+             */
+
+            void rollbackLater() {
+                assert(handle_);
+                if (handle_) {
+                    handle_->rollbackAndReleaseLater();
+                    handle_ = {};
+                }
+            }
+
+            ~Transaction() noexcept {
+                if (!empty()) {
+                    if (handle_ && handle_->failed()) {
+                        MYSQLPOOL_LOG_DEBUG_("Handle failed. Transaction not committed or rolled back!)");
+                        return;
+                    }
+                    assert(handle_);
+                    handle_->rollbackAndReleaseLater();
+                }
+            }
+
+            bool empty() const noexcept {
+                return handle_ == nullptr;
+            }
+
+            Transaction& operator = (const Transaction&) = delete;
+            Transaction& operator = (Transaction&& t) noexcept {
+                assert(t.handle_);
+                handle_ = t.handle_;
+                read_only_ = t.read_only_;
+                t.handle_ = {};
+                return *this;
+            }
+
+        private:
+            Handle *handle_ = {};
+            bool read_only_ = false;
+        };
+
+
         Handle() = default;
         Handle(const Handle &) = delete;
 
@@ -341,6 +484,8 @@ public:
             : parent_{std::exchange(v.parent_, {})}
             , connection_{std::exchange(v.connection_, {})}
             , uuid_{std::exchange(v.uuid_, {})}
+            , has_transaction_{std::exchange(v.has_transaction_, false)}
+            , failed_{std::exchange(v.failed_, false)}
         {
         }
 
@@ -354,12 +499,11 @@ public:
 
         Handle& operator = (const Handle) = delete;
         Handle& operator = (Handle && v) noexcept {
-            parent_ = v.parent_;
-            v.parent_ = {};
-            connection_ = v.connection_;
-            v.connection_ = {};
-            v.uuid_ = uuid_;
-            uuid_ = {};
+            parent_ = std::exchange(v.parent_, {});
+            connection_ = std::exchange(v.connection_, {});
+            uuid_ = std::exchange(v.uuid_, {});
+            has_transaction_ = std::exchange(v.has_transaction_, false);
+            failed_ = std::exchange(v.failed_, false);
             return *this;
         }
 
@@ -370,18 +514,20 @@ public:
         }
 
         // Return the mysql connection
-        auto& connection() {
+        connection_t& connection() {
             assert(connection_);
-            return connection_->connection_;
+            return connection_->connection();
         }
 
         bool empty() const noexcept {
-            return connection_ != nullptr;
+            return connection_ == nullptr;
         }
 
         void reset() {
             parent_ = {};
             connection_ = {};
+            has_transaction_ = false;
+            failed_ = false;
         }
 
         bool isClosed() const noexcept {
@@ -396,127 +542,254 @@ public:
             return connection_;
         }
 
+        bool hasConnection() const noexcept {
+            return connection_ != nullptr;
+        }
+
         const auto& connectionWrapper() const noexcept {
             return connection_;
+        }
+
+        /*! Starts a transaction
+         *
+         *  @param readOnly If true, the transaction is read-only
+         *  @param reconnect If true, the connection will be reconnected
+         *      if a non-recoverable error occurs during the TRANSACTION query.
+         *
+         *  @return A transaction object that you will use to commit or rollback the transaction.
+         */
+        [[nodiscard]] boost::asio::awaitable<Transaction> transaction(bool readOnly = false, bool reconnect = true) {
+            assert(connection_);
+            assert(!has_transaction_);
+            Options opts;
+            opts.reconnect_and_retry_query = reconnect;
+            co_await exec(readOnly ? "START TRANSACTION READ ONLY" : "START TRANSACTION", {});
+            has_transaction_ = true;
+            co_return Transaction{*this, readOnly};
+        }
+
+    private:
+        friend class Transaction;
+        boost::asio::awaitable<void> commit() {
+            assert(connection_);
+            assert(has_transaction_);
+            if (connection_ && has_transaction_) {
+                co_await exec("COMMIT", {false});
+            }
+            has_transaction_ = false;
+            co_return;
+        }
+
+        boost::asio::awaitable<void> rollback() {
+            assert(connection_);
+            assert(has_transaction_);
+            if (connection_ && has_transaction_) {
+                co_await exec("ROLLBACK", {false});
+            }
+            has_transaction_ = false;
+            co_return;
+        }
+
+    public:
+        template<typename ...argsT>
+        [[nodiscard]] boost::asio::awaitable<results>
+        exec(std::string_view query, const Options& opts, argsT ...args) {
+            results res;
+            boost::mysql::diagnostics diag;
+
+            try {
+            again:
+                // TODO: Revert the session time zone back to default if opts.locale_name is empty?
+                if (!opts.time_zone.empty()
+                    && !connectionWrapper()->isSameTimeZone(opts.time_zone)) {
+
+                    static const std::string_view ts_query = "SET time_zone=?";
+                    auto [sec, stmt] = co_await connectionWrapper()->getStmt(diag, ts_query);
+                    if (!handleError(sec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                    assert(stmt != nullptr);
+                    logQuery("locale", ts_query, opts.time_zone);
+                    auto [ec] = co_await connection().async_execute(stmt->bind(opts.time_zone), res, diag, tuple_awaitable);
+                    if (!handleError(ec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                    connectionWrapper()->setTimeZone(opts.time_zone);
+                }
+
+                if constexpr (sizeof...(argsT) == 0) {
+                    logQuery("static", query);
+                    auto [ec] = co_await connection().async_execute(query, res, diag, tuple_awaitable);
+                    if (!handleError(ec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                } else {
+                    auto [sec, stmt] = co_await connectionWrapper()->getStmt(diag, query);
+                    if (!handleError(sec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                    assert(stmt != nullptr);
+                    assert(stmt->valid());
+
+                    boost::system::error_code ec; // error status for query execution
+                    if constexpr (sizeof...(args) == 1 && FieldViewContainer<decltype(getFirstArgument(args...))>) {
+                        // Handle dynamic arguments as a range of field_view
+                        logQuery("stmt-dynarg", query, args...);
+
+                        auto arg = getFirstArgument(args...);
+                        auto [err] = co_await connection().async_execute(stmt->bind(arg.begin(), arg.end()), res, diag, tuple_awaitable);
+                        ec = err;
+                    } else {
+                        logQuery("stmt", query, args...);
+                        auto [err] = co_await connection().async_execute(stmt->bind(args...), res, diag, tuple_awaitable);
+                        ec = err;
+                    }
+
+                    // Close the statement before we evaluate the query. The error handling for the
+                    // query may throw an exception, and we need to close the statement before that.
+                    if (opts.close_prepared_statement) {
+                        // Close the statement (if any error occurs, we will just log it and continue
+                        logQuery("close-stmt", query);
+                        const auto [csec] = co_await connection().async_close_statement(*stmt, diag, tuple_awaitable);
+                        if (sec) {
+                            handleError(sec, diag, ErrorMode::EM_IGNORE);
+                        }
+                        connectionWrapper()->stmtCache().erase(query);
+                    }
+
+                    // Handle the query error if any
+                    if (!handleError(ec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                }
+
+                co_return std::move(res);
+            } catch (const std::runtime_error& ex) {
+                failed_ = true;
+                throw;
+            }
+        }
+
+        template<typename ...argsT>
+        [[nodiscard]] boost::asio::awaitable<results>
+        exec(std::string_view query, argsT ...args) {
+            results res;
+            co_return co_await exec(query, Options{}, args...);
+        }
+
+        template<tuple_like T>
+        [[nodiscard]] boost::asio::awaitable<results>
+        exec(std::string_view query, const T& tuple) {
+            results res;
+            co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
+                res = co_await exec(query, Options{}, args...);
+            }, tuple);
+
+            co_return res;
+        }
+
+        template<tuple_like T>
+        [[nodiscard]] boost::asio::awaitable<results>
+        exec(std::string_view query,  const Options& opts, const T& tuple) {
+
+            results res;
+            co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
+                res = co_await exec(query, opts, args...);
+            }, tuple);
+
+            co_return res;
+        }
+
+        boost::asio::awaitable<void> reconnect();
+
+        void release() {
+            assert(connection_);
+            assert(!connection_->isAvailable());
+            if (failed_) {
+                connection_->close();
+            } else {
+                connection_->touch();
+            }
+            connection_->release();
+        }
+
+        bool failed() const noexcept {
+            return failed_;
+        }
+
+    private:
+        ErrorMode errorMode(const Options& opts) const noexcept {
+            if (opts.reconnect_and_retry_query) {
+                if (has_transaction_) {
+                    MYSQLPOOL_LOG_TRACE_("Handle::errorMode: Ignoring 'reconnect_and_retry_query' option as a transaction is active");
+                } else {
+                    return ErrorMode::EM_RETRY;
+                }
+            }
+            return ErrorMode::EM_ALWAYS_FAIL;
+        }
+
+        void commitAndReleaseLater() noexcept {
+            if (!empty()) {
+                assert(has_transaction_);
+                auto *parent = parent_; // parent_ will be reset by std::move()
+                parent->doAndRelease(std::move(*this), [](Handle& handle) -> boost::asio::awaitable<void> {
+                    co_await handle.commit();
+                });
+            }
+        }
+
+        void rollbackAndReleaseLater() noexcept {
+            if (!empty()) {
+                assert(has_transaction_);
+                auto *parent = parent_; // parent_ will be reset by std::move()
+                parent->doAndRelease(std::move(*this), [](Handle& handle) -> boost::asio::awaitable<void> {
+                    co_await handle.rollback();
+                });
+            }
         }
 
         Mysqlpool *parent_{};
         Connection *connection_{};
         boost::uuids::uuid uuid_;
-
-        boost::asio::awaitable<void> reconnect();
+        bool has_transaction_ = false;
+        bool failed_ = false;
     };
+
+    void doAndRelease(Handle && handle, auto fn) noexcept {
+        try {
+            boost::asio::co_spawn(ctx_, [h=std::move(handle), fn=std::move(fn)]() mutable -> boost::asio::awaitable<void> {
+                try {
+                    co_await fn(h);
+                } catch (const std::exception& ex) {
+                    MYSQLPOOL_LOG_ERROR_("Request failed with exception: " << ex.what());
+                }
+                // When h goes out of scope, it will be returned to the connection pool
+            }, boost::asio::detached);
+        } catch (const std::exception& ex) {
+            MYSQLPOOL_LOG_ERROR_("doAndRelease: Failed to start coroutine: " << ex.what());
+        } catch (...) {
+            MYSQLPOOL_LOG_ERROR_("doAndRelease: Failed to start coroutine");
+        }
+    }
 
     [[nodiscard]] boost::asio::awaitable<Handle> getConnection(const Options& opts = {});
 
-    template<tuple_like T>
-    boost::asio::awaitable<results> exec(std::string_view query, const T& tuple) {
-
-        results res;
-        co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
-            res = co_await exec(query, args...);
-        }, tuple);
-
-        co_return res;
-    }
-
-    template<tuple_like T>
-    boost::asio::awaitable<results> exec(std::string_view query,  const Options& opts, const T& tuple) {
-
-        results res;
-        co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
-            res = co_await exec(query, opts, args...);
-        }, tuple);
-
-        co_return res;
-    }
-
-    template<typename T, typename... Args>
-    T getFirstArgument(T first, Args... args) {
-        return first;
-    }
-
     template<typename ...argsT>
-    boost::asio::awaitable<results> exec(std::string_view query, const Options& opts, argsT ...args) {
+    [[nodiscard]] boost::asio::awaitable<results>
+    exec(std::string_view query, const Options& opts, argsT ...args) {
         auto conn = co_await getConnection(opts);
-        results res;
-        boost::mysql::diagnostics diag;
-
-    again:
-        // TODO: Revert the session time zone back to default if opts.locale_name is empty?
-        if (!opts.time_zone.empty()
-            && !conn.connectionWrapper()->isSameTimeZone(opts.time_zone)) {
-
-            static const std::string_view ts_query = "SET time_zone=?";
-            auto [sec, stmt] = co_await conn.connectionWrapper()->getStmt(diag, ts_query);
-            if (!handleError(sec, diag)) {
-                co_await conn.reconnect();
-                goto again;
-            }
-            assert(stmt != nullptr);
-            logQuery("locale", ts_query, opts.time_zone);
-            auto [ec] = co_await conn.connection().async_execute(stmt->bind(opts.time_zone), res, diag, tuple_awaitable);
-            if (!handleError(ec, diag)) {
-                co_await conn.reconnect();
-                goto again;
-            }
-            conn.connectionWrapper()->setTimeZone(opts.time_zone);
-        }
-
-        if constexpr (sizeof...(argsT) == 0) {
-            logQuery("static", query);
-            auto [ec] = co_await conn.connection().async_execute(query, res, diag, tuple_awaitable);
-            if (!handleError(ec, diag)) {
-                co_await conn.reconnect();
-                goto again;
-            }
-        } else {
-            auto [sec, stmt] = co_await conn.connectionWrapper()->getStmt(diag, query);
-            if (!handleError(sec, diag)) {
-                co_await conn.reconnect();
-                goto again;
-            }
-            assert(stmt != nullptr);
-            assert(stmt->valid());
-
-            boost::system::error_code ec; // error status for query execution
-            if constexpr (sizeof...(args) == 1 && FieldViewContainer<decltype(getFirstArgument(args...))>) {
-                // Handle dynamic arguments as a range of field_view
-                logQuery("stmt-dynarg", query, args...);
-
-                auto arg = getFirstArgument(args...);
-                auto [err] = co_await conn.connection().async_execute(stmt->bind(arg.begin(), arg.end()), res, diag, tuple_awaitable);
-                ec = err;
-            } else {
-                logQuery("stmt", query, args...);
-                auto [err] = co_await conn.connection().async_execute(stmt->bind(args...), res, diag, tuple_awaitable);
-                ec = err;
-            }
-
-            // Close the statement before we evaluate the query. The error handling for the
-            // query may throw an exception, and we need to close the statement before that.
-            if (opts.close_prepared_statement) {
-                // Close the statement (if any error occurs, we will just log it and continue
-                logQuery("close-stmt", query);
-                const auto [csec] = co_await conn.connection().async_close_statement(*stmt, diag, tuple_awaitable);
-                if (sec) {
-                    handleError(sec, diag, false /* just report any error */);
-                }
-                conn.connectionWrapper()->stmtCache().erase(query);
-            }
-
-            // Handle the query error if any
-            if (!handleError(ec, diag)) {
-                co_await conn.reconnect();
-                goto again;
-            }
-        }
-
-        co_return std::move(res);
+        co_return co_await conn.exec(query, opts, args...);
     }
 
     template<typename ...argsT>
-    boost::asio::awaitable<results> exec(std::string_view query, argsT ...args) {
+    [[nodiscard]] boost::asio::awaitable<results>
+    exec(std::string_view query, argsT ...args) {
         co_return co_await exec(query, Options{}, args...);
     }
 
@@ -607,6 +880,10 @@ private:
 
             } else {
                 //co_return std::move(conn);
+                MYSQLPOOL_LOG_DEBUG_("Connected to " << ep.endpoint()
+                                                     << " as user " << dbUser()
+                                                     << " with database " << config_.database
+                                                     << (conn.uses_ssl() ? " using TLS" : " without TLS"));
                 ++num_open_connections_;
                 co_return;
             }
@@ -622,12 +899,13 @@ private:
     }
 
     // If it returns false, connection to server is closed
-    bool handleError(const boost::system::error_code& ec, boost::mysql::diagnostics& diag, bool ignore = false);
+    static bool handleError(const boost::system::error_code& ec,
+                            boost::mysql::diagnostics& diag,
+                            ErrorMode mode = ErrorMode::EM_ALWAYS_FAIL);
 
 
     void startTimer();
     void onTimer(boost::system::error_code ec);
-
     void release(Handle& h) noexcept;
     std::string dbUser() const;
     std::string dbPasswd() const;
