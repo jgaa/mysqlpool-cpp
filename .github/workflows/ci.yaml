@@ -12,14 +12,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            compiler: gcc
-          - os: ubuntu-latest
-            compiler: clang
-          - os: windows-latest
-            compiler: msvc
+          # - os: ubuntu-latest
+          #   compiler: gcc
+          # - os: ubuntu-latest
+          #   compiler: clang
+          # - os: windows-latest
+          #   compiler: msvc
           - os: macos-latest
-            compiler: llvm-17
+            compiler:
           #  compiler: gcc
           # - os: macos-latest
           #   compiler: clang
@@ -53,6 +53,11 @@ jobs:
           ninja: true
           vcpkg: true
           cppcheck: false
+
+      - name: Install compiler for Macos
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          brew install llvm
 
       - name: Prepare the PATH
         run: |
