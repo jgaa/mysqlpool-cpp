@@ -19,7 +19,8 @@ jobs:
           - os: windows-latest
             compiler: msvc
           - os: macos-latest
-            compiler: gcc
+            compiler: llvm-17
+          #  compiler: gcc
           # - os: macos-latest
           #   compiler: clang
 
