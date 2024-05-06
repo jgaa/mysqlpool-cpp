@@ -32,16 +32,11 @@ if (MYSQLPOOL_LOGDEP)
     add_dependencies(${PROJECT_NAME} ${MYSQLPOOL_LOGDEP})
 endif()
 
-if(NOT MSVC)
-    set(STANDARD_FS_LIB stdc++fs)
-endif()
-
 target_link_libraries(${PROJECT_NAME}
     ${Boost_LIBRARIES}
     OpenSSL::SSL
     OpenSSL::Crypto
     ZLIB::ZLIB
-    ${STANDARD_FS_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
