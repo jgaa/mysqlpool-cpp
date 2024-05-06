@@ -45,11 +45,6 @@ target_include_directories(unit_tests
 target_link_libraries(unit_tests
     ${GTEST_LIBRARIES}
     mysqlpool
-    # ${Boost_LIBRARIES}
-    # ${ZLIB_LIBRARIES}
-    # ${OPENSSL_LIBRARIES}
-    # stdc++fs
-    # ${CMAKE_THREAD_LIBS_INIT}
 )
 
 add_test(NAME unit_tests COMMAND unit_tests)
@@ -83,11 +78,6 @@ target_include_directories(integration_tests
 target_link_libraries(integration_tests
     ${GTEST_LIBRARIES}
     mysqlpool
-    # ${Boost_LIBRARIES}
-    # ${ZLIB_LIBRARIES}
-    # ${OPENSSL_LIBRARIES}
-    # stdc++fs
-    # ${CMAKE_THREAD_LIBS_INIT}
 )
 
 add_test(NAME integration_tests COMMAND integration_tests)
