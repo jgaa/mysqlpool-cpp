@@ -127,6 +127,18 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
     ${BOOST_LOG_DEP}
     )
 
+if (Boost_VERSION VERSION_GREATER_EQUAL "1.85.0")
+    find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
+        system
+        context
+        chrono
+        json
+        charconv
+        program_options
+        ${BOOST_LOG_DEP}
+    )
+endif()
+
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY
     INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIR})
