@@ -118,14 +118,16 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-    system
-    context
-    chrono
-    json
-    program_options
-    ${BOOST_LOG_DEP}
-    )
+# find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
+#     system
+#     context
+#     chrono
+#     json
+#     program_options
+#     ${BOOST_LOG_DEP}
+#     )
+
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED)
 
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY

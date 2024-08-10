@@ -235,10 +235,10 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
                 return false; // retry
             }
             MYSQLPOOL_LOG_DEBUG_("The error is recoverable but we will not re-try the query.");
-            ::boost::throw_exception(db_err{ec}, BOOST_CURRENT_LOCATION);
+            ::boost::throw_exception(server_err{ec}, BOOST_CURRENT_LOCATION);
         default:
             MYSQLPOOL_LOG_DEBUG_("The error is non-recoverable");
-            ::boost::throw_exception(db_err{ec}, BOOST_CURRENT_LOCATION);
+            ::boost::throw_exception(server_err{ec}, BOOST_CURRENT_LOCATION);
         }
     }
     return true;
