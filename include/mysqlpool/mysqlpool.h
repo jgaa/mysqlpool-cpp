@@ -100,12 +100,12 @@ struct resolve_failed : public std::runtime_error {
 };
 
 /*! Some error occured for a query */
-struct db_err : public std::runtime_error {
+struct server_err : public std::runtime_error {
 
-    db_err(boost::system::error_code ec, std::string message) noexcept
+    server_err(boost::system::error_code ec, std::string message) noexcept
         :  std::runtime_error{std::move(message)}, ec_{ec} {}
 
-    db_err(boost::system::error_code ec) noexcept
+    server_err(boost::system::error_code ec) noexcept
         :  std::runtime_error{ec.message()}, ec_{ec} {}
 
     const boost::system::error_code& error() const noexcept {
@@ -117,9 +117,9 @@ private:
 };
 
 /*! A query failed because a unique constraint was violated */
-struct db_err_exists : public db_err {
+struct db_err_exists : public server_err {
     db_err_exists(boost::system::error_code ec)
-        : db_err(ec, ec.message()) {}
+        : server_err(ec, ec.message()) {}
 };
 
 namespace detail {

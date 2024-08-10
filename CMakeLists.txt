@@ -118,14 +118,16 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-    system
-    context
-    chrono
-    json
-    program_options
-    ${BOOST_LOG_DEP}
-    )
+# find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
+#     system
+#     context
+#     chrono
+#     json
+#     program_options
+#     ${BOOST_LOG_DEP}
+#     )
+
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED)
 
 if (Boost_VERSION VERSION_GREATER_EQUAL "1.85.0")
     find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
