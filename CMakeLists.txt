@@ -120,10 +120,12 @@ if(NOT DEFINED USE_BOOST_VERSION)
 endif()
 
 if (MYSQLPOOL_BOOST_ALL)
-    set(BOOST_ALL "ALL")
+    set(BOOST_ALL ALL)
 endif()
 
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED ${BOOST_ALL})
+
+message("Boost_LIBRARIES: ${Boost_LIBRARIES}")
 
 set(MYSQLPOOL_BOOST_LIBRARIES
     ${BOOST_LOG_DEP}
