@@ -33,7 +33,7 @@ if (MYSQLPOOL_LOGDEP)
 endif()
 
 target_link_libraries(${PROJECT_NAME}
-    ${Boost_LIBRARIES}
+    ${MYSQLPOOL_BOOST_LIBRARIES}
     OpenSSL::SSL
     OpenSSL::Crypto
     ZLIB::ZLIB
@@ -41,7 +41,7 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 if (DEFINED CONAN_EXPORTED)
-    target_link_libraries(${PROJECT_NAME} logfault::logfault)
+    target_link_libraries(${PROJECT_NAME} logfault::logfault )
 endif()
 
 message(STATUS "Components to pack (${PROJECT_NAME}): ${CPACK_COMPONENTS_ALL}")

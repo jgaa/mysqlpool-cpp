@@ -15,9 +15,9 @@ include(GNUInstallDirs)
 set(MYSQLPOOL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-option(MYSQLPOOL_WITH_TESTS "Enable Tests" ON)
+option(MYSQLPOOL_WITH_TESTS "Enable Tests" OFF)
 option(MYSQLPOOL_WITH_INTGRATION_TESTS "Enable Integretion Tests" OFF)
-option(MYSQLPOOL_WITH_EXAMPLES "Compile examples" ON)
+option(MYSQLPOOL_WITH_EXAMPLES "Compile examples" OFF)
 option(MYSQLPOOL_EMBEDDED "Do not try to install dependencies" OFF)
 
 set(MYSQLPOOL_LOGGER "clog" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
@@ -73,7 +73,7 @@ if (MYSQLPOOL_LOG_WITH_INTERNAL_LOG)
 endif()
 
 if (MYSQLPOOL_LOG_WITH_BOOST_LOG)
-    set(BOOST_LOG_DEP log_setup log)
+    set(BOOST_LOG_DEP Boost::log_setup Boost::log)
     message(STATUS "Using Boost.Log for logging (brace for horrors!)")
 endif()
 
@@ -118,27 +118,20 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-# find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-#     system
-#     context
-#     chrono
-#     json
-#     program_options
-#     ${BOOST_LOG_DEP}
-#     )
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED ALL)
 
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED)
-
-if (Boost_VERSION VERSION_GREATER_EQUAL "1.85.0")
-    find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-        system
-        context
-        chrono
-        json
-        charconv
-        program_options
-        ${BOOST_LOG_DEP}
+set(MYSQLPOOL_BOOST_LIBRARIES
+    ${BOOST_LOG_DEP}
+    Boost::system
+    Boost::date_time
+    Boost::coroutine
+    Boost::context
+    Boost::chrono
+    Boost::json
     )
+
+if (Boost_VERSION VERSION_GREATER "1.84.0")
+    set(MYSQLPOOL_BOOST_LIBRARIES ${MYSQLPOOL_BOOST_LIBRARIES} Boost::charconv)
 endif()
 
 add_library(boost INTERFACE IMPORTED)
