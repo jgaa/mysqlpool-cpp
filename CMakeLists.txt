@@ -19,7 +19,7 @@ option(MYSQLPOOL_WITH_TESTS "Enable Tests" OFF)
 option(MYSQLPOOL_WITH_INTGRATION_TESTS "Enable Integretion Tests" OFF)
 option(MYSQLPOOL_WITH_EXAMPLES "Compile examples" OFF)
 option(MYSQLPOOL_EMBEDDED "Do not try to install dependencies" OFF)
-option(MYSQLPOOL_BOOST_ALL "Find_Boost support COMPONENT" ON)
+option(MYSQLPOOL_BOOST_ALL "Find_Boost support COMPONENT ALL" ON)
 
 set(MYSQLPOOL_LOGGER "clog" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
 set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable. One of 'none', error', 'warn', 'info', 'debug', 'trace'")
@@ -74,7 +74,8 @@ if (MYSQLPOOL_LOG_WITH_INTERNAL_LOG)
 endif()
 
 if (MYSQLPOOL_LOG_WITH_BOOST_LOG)
-    set(BOOST_LOG_DEP Boost::log_setup Boost::log)
+    set(BOOST_LOG_DEP Boost::log)
+    set(BOOST_LOG_LIB log log_setup)
     message(STATUS "Using Boost.Log for logging (brace for horrors!)")
 endif()
 
@@ -119,23 +120,45 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-if (MYSQLPOOL_BOOST_ALL)
-    set(BOOST_ALL ALL)
-endif()
-
-find_package(Boost ${USE_BOOST_VERSION} REQUIRED ${BOOST_ALL})
-
-message("Boost_LIBRARIES: ${Boost_LIBRARIES}")
 
 set(MYSQLPOOL_BOOST_LIBRARIES
     ${BOOST_LOG_DEP}
     Boost::system
-    Boost::date_time
-    Boost::coroutine
     Boost::context
     Boost::chrono
     Boost::json
     )
+
+set(MYSQLPOOL_BOOST_PROGRAM_OPTIONS Boost::program_options)
+
+if (MYSQLPOOL_BOOST_ALL)
+    find_package(Boost ${USE_BOOST_VERSION} REQUIRED ALL)
+else()
+    find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
+         system
+         context
+         chrono
+         json
+         program_options
+         ${BOOST_LOG_LIB}
+         )
+
+    if (Boost_VERSION VERSION_GREATER_EQUAL "1.85.0")
+        find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
+            system
+            context
+            chrono
+            json
+            charconv
+            program_options
+            ${BOOST_LOG_LIB}
+        )
+    set(MYSQLPOOL_BOOST_PROGRAM_OPTIONS ${MYSQLPOOL_BOOST_PROGRAM_OPTIONS} Boost::charconv)
+    endif()
+endif()
+
+message("Boost_LIBRARIES: ${Boost_LIBRARIES}")
+message(MYSQLPOOL_BOOST_LIBRARIES: ${MYSQLPOOL_BOOST_LIBRARIES})
 
 if (Boost_VERSION VERSION_GREATER "1.84.0")
     set(MYSQLPOOL_BOOST_LIBRARIES ${MYSQLPOOL_BOOST_LIBRARIES} Boost::charconv)
