@@ -19,7 +19,7 @@ option(MYSQLPOOL_WITH_TESTS "Enable Tests" OFF)
 option(MYSQLPOOL_WITH_INTGRATION_TESTS "Enable Integretion Tests" OFF)
 option(MYSQLPOOL_WITH_EXAMPLES "Compile examples" OFF)
 option(MYSQLPOOL_EMBEDDED "Do not try to install dependencies" OFF)
-option(MYSQLPOOL_BOOST_FROM_CONAN "Find_Boost supplied with the Boost Conan package is messed up and don't support COMPONENT" OFF)
+option(MYSQLPOOL_BOOST_ALL "Find_Boost support COMPONENT" ON)
 
 set(MYSQLPOOL_LOGGER "clog" CACHE STRING "Log system to use. One of 'clog', 'internal', 'logfault', 'boost' or 'none'")
 set(MYSQLPOOL_LOG_LEVEL_STR "info" CACHE STRING "Minimum log level to enable. One of 'none', error', 'warn', 'info', 'debug', 'trace'")
@@ -119,7 +119,7 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
-if (NOT MYSQLPOOL_BOOST_FROM_CONAN)
+if (MYSQLPOOL_BOOST_ALL)
     set(BOOST_ALL "ALL")
 endif()
 
