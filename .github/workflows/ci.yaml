@@ -81,7 +81,7 @@ jobs:
             mkdir build
           fi
           pushd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake
+          cmake .. -DMYSQLPOOL_WITH_TESTS=ON -DMYSQLPOOL_WITH_INTGRATION_TESTS=OFF -DMYSQLPOOL_WITH_EXAMPLES -DCMAKE_BUILD_TYPE=Release -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake
           cmake --build .
           popd
 
