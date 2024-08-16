@@ -120,49 +120,29 @@ if(NOT DEFINED USE_BOOST_VERSION)
     set(USE_BOOST_VERSION 1.83)
 endif()
 
+find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
+     system
+     context
+     chrono
+     json
+     program_options
+     ${BOOST_LOG_LIB}
+     )
 
-set(MYSQLPOOL_BOOST_LIBRARIES
-    ${BOOST_LOG_DEP}
-    Boost::system
-    Boost::context
-    Boost::chrono
-    Boost::json
+if (Boost_VERSION VERSION_GREATER_EQUAL "1.85.0")
+    find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
+        system
+        context
+        chrono
+        json
+        charconv
+        program_options
+        ${BOOST_LOG_LIB}
     )
 
-set(MYSQLPOOL_BOOST_PROGRAM_OPTIONS Boost::program_options)
-
-if (MYSQLPOOL_BOOST_ALL)
-    find_package(Boost ${USE_BOOST_VERSION} REQUIRED ALL)
-else()
-    find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-         system
-         context
-         chrono
-         json
-         program_options
-         ${BOOST_LOG_LIB}
-         )
-
-    if (Boost_VERSION VERSION_GREATER_EQUAL "1.85.0")
-        find_package(Boost ${USE_BOOST_VERSION} REQUIRED COMPONENTS
-            system
-            context
-            chrono
-            json
-            charconv
-            program_options
-            ${BOOST_LOG_LIB}
-        )
-    set(MYSQLPOOL_BOOST_PROGRAM_OPTIONS ${MYSQLPOOL_BOOST_PROGRAM_OPTIONS} Boost::charconv)
     endif()
-endif()
 
 message("Boost_LIBRARIES: ${Boost_LIBRARIES}")
-message(MYSQLPOOL_BOOST_LIBRARIES: ${MYSQLPOOL_BOOST_LIBRARIES})
-
-if (Boost_VERSION VERSION_GREATER "1.84.0")
-    set(MYSQLPOOL_BOOST_LIBRARIES ${MYSQLPOOL_BOOST_LIBRARIES} Boost::charconv)
-endif()
 
 add_library(boost INTERFACE IMPORTED)
 set_property(TARGET boost PROPERTY

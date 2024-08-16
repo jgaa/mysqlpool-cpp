@@ -33,7 +33,7 @@ if (MYSQLPOOL_LOGDEP)
 endif()
 
 target_link_libraries(${PROJECT_NAME}
-    ${MYSQLPOOL_BOOST_LIBRARIES}
+    ${Boost_LIBRARIES}
     OpenSSL::SSL
     OpenSSL::Crypto
     ZLIB::ZLIB
