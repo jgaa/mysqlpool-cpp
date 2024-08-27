@@ -134,9 +134,8 @@ boost::asio::awaitable<void> Mysqlpool::close()
             }
         }
 
-        const auto [ec] = co_await semaphore_.async_wait(as_tuple(asio::use_awaitable));
-        MYSQLPOOL_LOG_TRACE_("Wait ended. ec=" << ec);
-        if (!ec) {
+        try {
+            co_await semaphore_.async_wait(asio::use_awaitable);
             MYSQLPOOL_LOG_WARN_("Graceful database disconnect timed out.");
             std::scoped_lock lock{mutex_};
             for(auto &conn : connections_) {
@@ -146,12 +145,12 @@ boost::asio::awaitable<void> Mysqlpool::close()
                 }
             }
             co_return;
-        }
-
-        if (ec && ec != boost::asio::error::operation_aborted) {
-            MYSQLPOOL_LOG_WARN_("async_wait on semaphore during db-close failed: " << ec.message());
-            // Give up.
-            co_return;
+        } catch(const boost::system::system_error& ec) {
+            if (ec.code() != boost::asio::error::operation_aborted) {
+                MYSQLPOOL_LOG_WARN_("async_wait on semaphore during db-close failed: " << ec.what());
+                // Give up.
+                co_return;
+            }
         }
     }
 }
