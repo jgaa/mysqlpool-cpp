@@ -81,7 +81,7 @@ asio::awaitable<Mysqlpool::Handle> Mysqlpool::getConnection(const Options& opts)
 
         MYSQLPOOL_LOG_TRACE_("Waiting for a DB connection to become available...");
         try {
-            co_await semaphore_.async_wait(as_tuple(asio::use_awaitable));
+            co_await semaphore_.async_wait(asio::use_awaitable);
         } catch(const boost::system::system_error& ec) {
             if (ec.code() != boost::asio::error::operation_aborted) {
                 MYSQLPOOL_LOG_DEBUG_("async_wait on semaphore failed: " << ec.what());
