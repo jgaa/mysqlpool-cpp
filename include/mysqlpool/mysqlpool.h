@@ -488,6 +488,7 @@ private:
             , uuid_{std::exchange(v.uuid_, {})}
             , has_transaction_{std::exchange(v.has_transaction_, false)}
             , failed_{std::exchange(v.failed_, false)}
+            , ex_state_{std::exchange(v.ex_state_, {})}
         {
         }
 
@@ -506,6 +507,7 @@ private:
             uuid_ = std::exchange(v.uuid_, {});
             has_transaction_ = std::exchange(v.has_transaction_, false);
             failed_ = std::exchange(v.failed_, false);
+            ex_state_ = std::exchange(v.ex_state_, {});
             return *this;
         }
 
@@ -775,7 +777,6 @@ again:
                     }
                 }
 
-                need_to_reed_ = true;
                 co_return std::move(res);
             } catch (const std::runtime_error& ex) {
                 failed_ = true;
@@ -818,7 +819,7 @@ again:
         void release() {
             assert(connection_);
             assert(!connection_->isAvailable());
-            if (failed_) {
+            if (failed_ || (ex_state_ && !ex_state_->complete())) {
                 connection_->close();
             } else {
                 connection_->touch();
@@ -868,7 +869,6 @@ again:
         std::optional<boost::mysql::execution_state> ex_state_;
         bool has_transaction_ = false;
         bool failed_ = false;
-        bool need_to_reed_ = false;
     };
 
     void doAndRelease(Handle && handle, auto fn) noexcept {
