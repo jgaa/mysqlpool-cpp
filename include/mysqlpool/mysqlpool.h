@@ -320,7 +320,9 @@ public:
         }
 
         // Cache for prepared statements (per connection)
-        boost::asio::awaitable<std::tuple<boost::system::error_code, boost::mysql::statement *>>
+        using statement_t = std::tuple<boost::system::error_code, boost::mysql::statement *>;
+
+        boost::asio::awaitable<statement_t>
         getStmt(boost::mysql::diagnostics& diag, std::string_view query) {
             auto& cached_stmt = stmt_cache_[query];
             if (!cached_stmt.valid()) {
@@ -590,7 +592,128 @@ private:
             co_return;
         }
 
+
+        boost::asio::awaitable<bool> handleTimezone(const Options& opts) {
+            if (!opts.time_zone.empty()
+                && !connectionWrapper()->isSameTimeZone(opts.time_zone)) {
+                boost::mysql::diagnostics diag;
+                results res;
+
+                static const std::string_view ts_query = "SET time_zone=?";
+                auto [sec, stmt] = co_await connectionWrapper()->getStmt(diag, ts_query);
+                if (!handleError(sec, diag, errorMode(opts))) {
+                    co_await reconnect();
+                    co_return false;
+                }
+                assert(stmt != nullptr);
+                logQuery("locale", ts_query, opts.time_zone);
+                auto [ec] = co_await connection().async_execute(stmt->bind(opts.time_zone), res, diag, tuple_awaitable);
+                if (!handleError(ec, diag, errorMode(opts))) {
+                    co_await reconnect();
+                    co_return false;
+                }
+                connectionWrapper()->setTimeZone(opts.time_zone);
+            }
+            co_return true;
+        }
+
     public:
+        /*! Batch based execution */
+        template<typename ...argsT>
+        [[nodiscard]] boost::asio::awaitable<void>
+        start_exec(std::string_view query, const Options& opts, argsT ...args) {
+            boost::mysql::diagnostics diag;
+            boost::mysql::execution_state ex_state;
+
+            try {
+        again:
+                if (!co_await handleTimezone(opts)) {
+                    goto again;
+                }
+
+                if constexpr (sizeof...(argsT) == 0) {
+                    logQuery("static-start", query);
+                    auto [ec] = co_await connection().async_start_execution(query, ex_state, diag, tuple_awaitable);
+                    if (!handleError(ec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                } else {
+                    auto [sec, stmt] = co_await connectionWrapper()->getStmt(diag, query);
+                    if (!handleError(sec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                    assert(stmt != nullptr);
+                    assert(stmt->valid());
+
+                    boost::system::error_code ec; // error status for query execution
+                    if constexpr (sizeof...(args) == 1 && FieldViewContainer<decltype(getFirstArgument(args...))>) {
+                        // Handle dynamic arguments as a range of field_view
+                        logQuery("stmt-dynarg-start", query, args...);
+
+                        auto arg = getFirstArgument(args...);
+                        auto [err] = co_await connection().async_start_execution(stmt->bind(arg.begin(), arg.end()), ex_state, diag, tuple_awaitable);
+                        ec = err;
+                    } else {
+                        logQuery("stmt-start", query, args...);
+                        auto [err] = co_await connection().async_start_execution(stmt->bind(args...), ex_state, diag, tuple_awaitable);
+                        ec = err;
+                    }
+
+                    // Close the statement before we evaluate the query. The error handling for the
+                    // query may throw an exception, and we need to close the statement before that.
+                    if (opts.close_prepared_statement) {
+                        // Close the statement (if any error occurs, we will just log it and continue
+                        logQuery("close-stmt", query);
+                        const auto [csec] = co_await connection().async_close_statement(*stmt, diag, tuple_awaitable);
+                        if (sec) {
+                            handleError(sec, diag, ErrorMode::EM_IGNORE);
+                        }
+                        connectionWrapper()->stmtCache().erase(query);
+                    }
+
+                    // Handle the query error if any
+                    if (!handleError(ec, diag, errorMode(opts))) {
+                        co_await reconnect();
+                        goto again;
+                    }
+                }
+
+                ex_state_.emplace(std::move(ex_state));
+                co_return;
+
+            } catch (const std::runtime_error& ex) {
+                failed_ = true;
+                throw;
+            }
+        }
+
+        [[nodiscard]] boost::asio::awaitable<boost::mysql::rows_view>
+        readSome() {
+            assert(ex_state_);
+            boost::mysql::diagnostics diag;
+            results res;
+            auto [ec, rows] = co_await connection().async_read_some_rows(*ex_state_, diag, tuple_awaitable);
+            if (!handleError(ec, diag, ErrorMode::EM_ALWAYS_FAIL)) {
+                throw server_err{ec};
+            };
+            co_return rows;
+        }
+
+        bool shouldReadMore() const noexcept {
+            assert(ex_state_);
+            if (!ex_state_) {
+                return false;
+            }
+            return ex_state_->should_read_rows();
+        }
+
+        // If unset, we are not in batch mode
+        auto getExecutionState() const noexcept {
+            return ex_state_;
+        }
+
         template<typename ...argsT>
         [[nodiscard]] boost::asio::awaitable<results>
         exec(std::string_view query, const Options& opts, argsT ...args) {
@@ -598,25 +721,9 @@ private:
             boost::mysql::diagnostics diag;
 
             try {
-            again:
-                // TODO: Revert the session time zone back to default if opts.locale_name is empty?
-                if (!opts.time_zone.empty()
-                    && !connectionWrapper()->isSameTimeZone(opts.time_zone)) {
-
-                    static const std::string_view ts_query = "SET time_zone=?";
-                    auto [sec, stmt] = co_await connectionWrapper()->getStmt(diag, ts_query);
-                    if (!handleError(sec, diag, errorMode(opts))) {
-                        co_await reconnect();
-                        goto again;
-                    }
-                    assert(stmt != nullptr);
-                    logQuery("locale", ts_query, opts.time_zone);
-                    auto [ec] = co_await connection().async_execute(stmt->bind(opts.time_zone), res, diag, tuple_awaitable);
-                    if (!handleError(ec, diag, errorMode(opts))) {
-                        co_await reconnect();
-                        goto again;
-                    }
-                    connectionWrapper()->setTimeZone(opts.time_zone);
+again:
+                if (!co_await handleTimezone(opts)) {
+                    goto again;
                 }
 
                 if constexpr (sizeof...(argsT) == 0) {
@@ -668,6 +775,7 @@ private:
                     }
                 }
 
+                need_to_reed_ = true;
                 co_return std::move(res);
             } catch (const std::runtime_error& ex) {
                 failed_ = true;
@@ -757,8 +865,10 @@ private:
         Mysqlpool *parent_{};
         Connection *connection_{};
         boost::uuids::uuid uuid_;
+        std::optional<boost::mysql::execution_state> ex_state_;
         bool has_transaction_ = false;
         bool failed_ = false;
+        bool need_to_reed_ = false;
     };
 
     void doAndRelease(Handle && handle, auto fn) noexcept {
