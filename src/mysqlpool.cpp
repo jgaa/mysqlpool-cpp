@@ -253,7 +253,7 @@ void Mysqlpool::startTimer()
         return;
     }
 
-    timer_.expires_from_now(chrono::milliseconds{config_.timer_interval_ms});
+    timer_.expires_after(chrono::milliseconds{config_.timer_interval_ms});
     timer_.async_wait([this](auto ec) {
         try {
             onTimer(ec);
