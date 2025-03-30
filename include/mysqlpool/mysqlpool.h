@@ -267,7 +267,7 @@ public:
 
         void close() {
             setState(State::CLOSING);
-            connection_.async_close([this](boost::system::error_code /*ec*/) {
+            connection().async_close([this](boost::system::error_code /*ec*/) {
                 parent_.closed(*this);
             });
         }
@@ -327,7 +327,7 @@ public:
             auto& cached_stmt = stmt_cache_[query];
             if (!cached_stmt.valid()) {
                 logQuery("prepare-stmt", query);
-                auto [ec, actual_stmt] = co_await connection_.async_prepare_statement(query, diag, tuple_awaitable);
+                auto [ec, actual_stmt] = co_await connection().async_prepare_statement(query, diag, tuple_awaitable);
                 if (ec) {
                     stmt_cache_.erase(query);
                     boost::system::error_code sec = ec;
@@ -341,15 +341,18 @@ public:
         }
 
         connection_t& connection() {
-            return connection_;
+            assert(connection_);
+            return *connection_;
         }
+
+        void resetConnection();
 
 private:
         static boost::asio::ssl::context getSslContext(const TlsConfig& config);
 
         Mysqlpool& parent_;
         boost::asio::ssl::context ssl_ctx_{getSslContext(parent_.config_.tls)};
-        connection_t connection_;
+        std::unique_ptr<connection_t> connection_;
         std::atomic<State> state_{State::CLOSED};
         bool taken_{false};
         std::string time_zone_name_;

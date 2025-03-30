@@ -346,6 +346,7 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
         ::boost::throw_exception(resolve_failed{"Failed to resolve database hostname"}, BOOST_CURRENT_LOCATION);
     }
 
+    connection_->resetConnection();
     connection_->clearCache();
     connection_->setState(Connection::State::CONNECTING);
     connection_->setTimeZone({});
@@ -361,9 +362,10 @@ boost::asio::awaitable<void> Mysqlpool::Handle::reconnect()
 }
 
 Mysqlpool::Connection::Connection(Mysqlpool &parent)
-    : parent_{parent}, connection_{parent.ctx_.get_executor(), ssl_ctx_}{
+    : parent_{parent} {
 
     MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " is being costructed");
+    resetConnection();
     touch();
 }
 
@@ -381,6 +383,12 @@ void Mysqlpool::Connection::setState(State state) {
 void Mysqlpool::Connection::touch() {
     MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " is touched.");
     expires_ = std::chrono::steady_clock::now() + chrono::seconds{parent_.config_.connection_idle_limit_seconds};
+}
+
+void Mysqlpool::Connection::resetConnection()
+{
+    MYSQLPOOL_LOG_TRACE_("db Connection " << uuid() << " gets a new socket.");
+    connection_ = make_unique<connection_t>(parent_.ctx_.get_executor(), ssl_ctx_);
 }
 
 asio::ssl::context Mysqlpool::Connection::getSslContext(const TlsConfig &config) {
