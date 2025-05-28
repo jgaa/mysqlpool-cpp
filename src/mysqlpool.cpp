@@ -249,7 +249,7 @@ bool Mysqlpool::handleError(const boost::system::error_code &ec, boost::mysql::d
 
 void Mysqlpool::startTimer()
 {
-    if (closed_) {
+    if (closed_ || !config_.timer_interval_ms) {
         return;
     }
 

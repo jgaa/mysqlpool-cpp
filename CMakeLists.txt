@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED MYSQLPOOL_VERSION)
-    set(MYSQLPOOL_VERSION 0.5.1)
+    set(MYSQLPOOL_VERSION 0.5.2)
 endif()
 
 project(mysqlpool-cpp

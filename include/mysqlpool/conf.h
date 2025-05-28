@@ -119,6 +119,8 @@ struct DbConfig {
      *
      *  The timer events are used to disconnect connetions that
      *  have been idle for too long.
+     *
+     *  Set to 0 to disable the timer.
      */
     unsigned timer_interval_ms = 5000;
 
