@@ -7,6 +7,7 @@
 #include <tuple>
 #include <algorithm>
 #include <ranges>
+#include <deque>
 
 #include <boost/asio.hpp>
 #include <boost/mysql.hpp>
@@ -40,6 +41,237 @@ private:
     T fn_;
 };
 
+#include <coroutine>
+#include <optional>
+
+template<typename T>
+struct Generator {
+    struct promise_type {
+        std::optional<T> current;
+
+        Generator get_return_object() {
+            return Generator{std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+        std::suspend_always initial_suspend() noexcept { return {}; }
+        std::suspend_always final_suspend() noexcept   { return {}; }
+        std::suspend_always yield_value(T value) noexcept {
+            current = std::move(value);
+            return {};
+        }
+        void unhandled_exception() { std::terminate(); }
+        void return_void() noexcept {}
+    };
+
+    using handle_type = std::coroutine_handle<promise_type>;
+
+    explicit Generator(handle_type h) : coro(h) {}
+    Generator(Generator&& rhs) noexcept : coro(rhs.coro) { rhs.coro = {}; }
+    ~Generator() { if (coro) coro.destroy(); }
+
+    struct iterator {
+        handle_type coro;
+        bool done;
+
+        iterator(handle_type h, bool d) : coro(h), done(d) {}
+
+        iterator& operator++() {
+            coro.resume();
+            done = coro.done();
+            return *this;
+        }
+        T const& operator*() const {
+            return *coro.promise().current;
+        }
+        bool operator==(std::default_sentinel_t) const { return done; }
+    };
+
+    iterator begin() {
+        coro.resume();
+        return {coro, coro.done()};
+    }
+    std::default_sentinel_t end() { return {}; }
+
+private:
+    handle_type coro;
+};
+
+template<std::ranges::input_range Range, typename T>
+auto BindTupleGenerator(const Range& objects, const T& fn)
+    -> Generator< decltype(fn(*std::begin(objects))) >
+{
+    using TupleType = decltype(fn(*std::begin(objects)));
+    for (auto const& obj : objects) {
+        // create the per-object tuple on the fly:
+        TupleType tpl = fn(obj);
+        co_yield std::move(tpl);
+    }
+}
+
+template<class T>
+concept HasPromiseType = requires {
+    typename std::remove_reference_t<T>::promise_type;
+};
+
+template<class G>
+concept IterableGenerator = requires(G g) {
+    { g.begin() } -> std::input_iterator;               // we can start iterating
+    { g.end()   } -> std::sentinel_for<decltype(g.begin())>;  // we can end
+};
+
+template<class G>
+concept IsGenerator = HasPromiseType<G>; // && IterableGenerator<G>;
+
+class FieldViewMatrix {
+public:
+    // using value_type = boost::mysql::field_view;
+    // using Row = std::span<const value_type>;
+    using Field = boost::mysql::field_view;
+    using Row = std::span<const Field>;
+    using value_type = Row;
+
+    class RowIterator {
+    public:
+        // 1) Iterator‐traits for C++20:
+        using iterator_concept = std::input_iterator_tag;
+        using value_type        = Row;
+        using reference         = Row;
+        using difference_type   = std::ptrdiff_t;
+        using pointer           = void;  // not really used for input_iterator
+
+        // 2) Default ctor so sentinel_for<RowIterator,RowIterator>’s semiregular<> works:
+        RowIterator() noexcept = default;
+
+        // 3) Your existing ctor, storing a pointer to the parent & an index:
+        RowIterator(const FieldViewMatrix* parent, std::size_t pos) noexcept
+            : parent_(parent), pos_(pos) {}
+
+        // 4) Dereference:
+        reference operator*() const noexcept {
+            return (*parent_)[pos_];
+        }
+
+        // 5) Pre-increment
+        RowIterator& operator++() noexcept {
+            ++pos_;
+            return *this;
+        }
+        // 6) Post-increment
+        RowIterator operator++(int) noexcept {
+            RowIterator tmp = *this;
+            ++pos_;
+            return tmp;
+        }
+
+        // 7) Equality comparison
+        friend bool operator==(const RowIterator& a, const RowIterator& b) noexcept {
+            return a.parent_ == b.parent_ && a.pos_ == b.pos_;
+        }
+        friend bool operator!=(const RowIterator& a, const RowIterator& b) noexcept {
+            return !(a == b);
+        }
+
+    private:
+        const FieldViewMatrix* parent_ = nullptr;
+        std::size_t pos_ = 0;
+    };
+
+
+    FieldViewMatrix(std::size_t rows, std::size_t cols)
+        : rows_(rows), cols_(cols), data_(rows * cols) {}
+
+    Field& operator()(std::size_t row, std::size_t col) {
+        return data_[row * cols_ + col];
+    }
+
+    const Field& operator()(std::size_t row, std::size_t col) const {
+        return data_[row * cols_ + col];
+    }
+
+    Row operator[](std::size_t row) const {
+        return Row{&data_[row * cols_], cols_};
+    }
+
+    std::size_t row_count() const { return rows_; }
+
+    auto begin() const {
+        return RowIterator{this, 0};
+    }
+
+    auto end() const {
+        return RowIterator{this, rows_};
+    }
+
+    template <typename T>
+    void set(std::size_t row, std::size_t col, const T& value) {
+        auto it = data_.begin() + ((row * cols_) + col + 1);
+        data_.emplace(it, value);
+    }
+
+    void set(std::size_t row, std::size_t col, const std::optional<std::string_view>& value) {
+        if (value) {
+            set(row, col, *value);
+        } else {
+            set(row, col, nullptr);
+        }
+    }
+
+    Field& at(std::size_t row, std::size_t col) {
+        if (row >= rows_ || col >= cols_) {
+            throw std::out_of_range("FieldViewMatrix index out of range");
+        }
+        return data_[row * cols_ + col];
+    }
+
+    std::size_t cols() const noexcept {
+        return cols_;
+    }
+
+    std::size_t rows() const noexcept {
+        return rows_;
+    }
+
+    template <typename V>
+    const std::string& addBuffer(const V& str) {
+        return buffers_.emplace_back(str);
+    }
+
+    template <typename V>
+    void copy(std::size_t row, std::size_t col, const V& str) {
+        const auto& v = buffers_.emplace_back(str);
+        set(row, col, v);
+    }
+
+    template <typename V>
+    void copy(std::size_t row, std::size_t col, const std::optional<V>& str) {
+        if (str) {
+            const auto& v = buffers_.emplace_back(str.value());
+            set(row, col, v);
+            return;
+        }
+        set(row, col, nullptr);
+    }
+
+private:
+    std::size_t rows_, cols_;
+    std::vector<Field> data_;
+    std::deque<std::string> buffers_;
+
+    // class RowIterator {
+    // public:
+    //     RowIterator(const FieldViewMatrix& parent, std::size_t pos)
+    //         : parent_(parent), pos_(pos) {}
+
+    //     Row operator*() const { return parent_[pos_]; }
+    //     RowIterator& operator++() { ++pos_; return *this; }
+    //     bool operator!=(const RowIterator& other) const { return pos_ != other.pos_; }
+
+    // private:
+    //     const FieldViewMatrix& parent_;
+    //     std::size_t pos_;
+    // };
+};
+
+
 using sha256_hash_t = std::array<uint8_t, 32>;
 sha256_hash_t sha256(const std::span<const uint8_t> in);
 
@@ -59,6 +291,11 @@ std::ostream& operator << (std::ostream& out, const T& range) {
     return out;
 }
 
+template<typename T>
+concept RangeOfFieldViewContainer =
+    std::ranges::range<T> &&
+    FieldViewContainer<std::ranges::range_value_t<T>>;
+
 // https://stackoverflow.com/questions/68443804/c20-concept-to-check-tuple-like-types
 template<class T, std::size_t N>
 concept has_tuple_element =
@@ -67,18 +304,26 @@ concept has_tuple_element =
         { get<N>(t) } -> std::convertible_to<const std::tuple_element_t<N, T>&>;
     };
 
-template<class T>
-concept tuple_like = !std::is_reference_v<T>
-                     && requires(T t) {
-                            typename std::tuple_size<T>::type;
-                            requires std::derived_from<
-                                std::tuple_size<T>,
-                                std::integral_constant<std::size_t, std::tuple_size_v<T>>
-                                >;
-                        } && []<std::size_t... N>(std::index_sequence<N...>) {
-                            return (has_tuple_element<T, N> && ...);
-                        }(std::make_index_sequence<std::tuple_size_v<T>>());
+// template<class T>
+// concept tuple_like = !std::is_reference_v<T>
+//                      && requires(T t) {
+//                             typename std::tuple_size<T>::type;
+//                             requires std::derived_from<
+//                                 std::tuple_size<T>,
+//                                 std::integral_constant<std::size_t, std::tuple_size_v<T>>
+//                                 >;
+//                         } && []<std::size_t... N>(std::index_sequence<N...>) {
+//                             return (has_tuple_element<T, N> && ...);
+//                         }(std::make_index_sequence<std::tuple_size_v<T>>());
 
+template<typename T>
+concept tuple_like = requires(T&& t) {
+    std::tuple_size<std::remove_cvref_t<T>>::value;    // etc…
+};
+
+// a concept that’s true if *any* of the Args is tuple_like
+template<typename... Args>
+concept AnyTupleArg = ( tuple_like<std::remove_cvref_t<Args>> || ... );
 
 /*! Exception thrown if a statement was aborted.
  *
@@ -156,10 +401,21 @@ struct Options {
     bool close_prepared_statement{false};
 };
 
+
+template<typename T>
+concept IsOptions =
+    std::is_same_v<std::remove_cvref_t<T>, Options>;
+
 template<typename T, typename ...ArgsT>
-T getFirstArgument(T first, ArgsT...) {
+const T& getFirstArgumentAsConstRef(const T& first, ArgsT...) {
     return first;
 }
+
+template<typename T, typename ...ArgsT>
+T& getFirstArgumentAsRef(T& first, ArgsT...) {
+    return first;
+}
+
 
 class Mysqlpool {
     enum class ErrorMode {
@@ -570,7 +826,7 @@ private:
             assert(!has_transaction_);
             Options opts;
             opts.reconnect_and_retry_query = reconnect;
-            co_await exec(readOnly ? "START TRANSACTION READ ONLY" : "START TRANSACTION", {});
+            co_await exec_(readOnly ? "START TRANSACTION READ ONLY" : "START TRANSACTION", {});
             has_transaction_ = true;
             co_return Transaction{*this, readOnly};
         }
@@ -581,7 +837,7 @@ private:
             assert(connection_);
             assert(has_transaction_);
             if (connection_ && has_transaction_) {
-                co_await exec("COMMIT", {false});
+                co_await exec_("COMMIT", {false});
             }
             has_transaction_ = false;
             co_return;
@@ -591,7 +847,7 @@ private:
             assert(connection_);
             assert(has_transaction_);
             if (connection_ && has_transaction_) {
-                co_await exec("ROLLBACK", {false});
+                co_await exec_("ROLLBACK", {false});
             }
             has_transaction_ = false;
             co_return;
@@ -653,11 +909,11 @@ private:
                     assert(stmt->valid());
 
                     boost::system::error_code ec; // error status for query execution
-                    if constexpr (sizeof...(args) == 1 && FieldViewContainer<decltype(getFirstArgument(args...))>) {
+                     if constexpr (sizeof...(argsT) == 1 && RangeOfFieldViewContainer<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
                         // Handle dynamic arguments as a range of field_view
                         logQuery("stmt-dynarg-start", query, args...);
 
-                        auto arg = getFirstArgument(args...);
+                        auto arg = getFirstArgumentAsConstRef(args...);
                         auto [err] = co_await connection().async_start_execution(stmt->bind(arg.begin(), arg.end()), ex_state, diag, tuple_awaitable);
                         ec = err;
                     } else {
@@ -721,10 +977,9 @@ private:
 
         template<typename ...argsT>
         [[nodiscard]] boost::asio::awaitable<results>
-        exec(std::string_view query, const Options& opts, argsT ...args) {
+        exec_(std::string_view query, const Options& opts, argsT&& ...args) {
             results res;
             boost::mysql::diagnostics diag;
-
             try {
 again:
                 if (!co_await handleTimezone(opts)) {
@@ -748,11 +1003,46 @@ again:
                     assert(stmt->valid());
 
                     boost::system::error_code ec; // error status for query execution
-                    if constexpr (sizeof...(args) == 1 && FieldViewContainer<decltype(getFirstArgument(args...))>) {
+                    if constexpr (sizeof...(argsT) == 1 && IsGenerator<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
+                        logQuery("stmt-batch-coro-start", query);
+                        auto& gen = getFirstArgumentAsRef(args...);
+                        for (auto&& tpl : gen) {
+                            auto [err] = co_await connection().async_execute(
+                                stmt->bind(std::apply(
+                                    [&](auto&&... elems){
+                                        return std::tuple<decltype(elems)...>(
+                                            std::forward<decltype(elems)>(elems)...
+                                            );
+                                    },
+                                    tpl
+                                    )),
+                                res, diag, tuple_awaitable
+                                );
+                            if (err) {
+                                ec = err;
+                                MYSQLPOOL_LOG_DEBUG_("Batch insert failed with ec=" << ec.message());
+                                break;
+                            }
+                        }
+                    } else if constexpr (sizeof...(argsT) == 1 && RangeOfFieldViewContainer<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
+                        auto&& batch = getFirstArgumentAsConstRef(args...); // Perfect-forward to avoid copies
+
+                        logQuery("stmt-batch-insert-start", query);
+                        for (auto&& row : batch) {
+                            // 'row' is a FieldViewContainer (e.g., vector<field_view>)
+                            //logQuery("stmt-batch-dynarg-start", query, row);
+                            auto [err] = co_await connection().async_execute(stmt->bind(row.begin(), row.end()), res, diag, tuple_awaitable);
+                            if (err) {
+                                ec = err;
+                                MYSQLPOOL_LOG_DEBUG_("Batch insert failed with ec=" << ec.message());
+                                break;
+                            }
+                        }
+                    } else if constexpr (sizeof...(args) == 1 && FieldViewContainer<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
                         // Handle dynamic arguments as a range of field_view
                         logQuery("stmt-dynarg", query, args...);
 
-                        auto arg = getFirstArgument(args...);
+                        auto arg = getFirstArgumentAsConstRef(args...);
                         auto [err] = co_await connection().async_execute(stmt->bind(arg.begin(), arg.end()), res, diag, tuple_awaitable);
                         ec = err;
                     } else {
@@ -767,8 +1057,8 @@ again:
                         // Close the statement (if any error occurs, we will just log it and continue
                         logQuery("close-stmt", query);
                         const auto [csec] = co_await connection().async_close_statement(*stmt, diag, tuple_awaitable);
-                        if (sec) {
-                            handleError(sec, diag, ErrorMode::EM_IGNORE);
+                        if (csec) {
+                            handleError(csec, diag, ErrorMode::EM_IGNORE);
                         }
                         connectionWrapper()->stmtCache().erase(query);
                     }
@@ -787,32 +1077,67 @@ again:
             }
         }
 
-        template<typename ...argsT>
+        template<typename... Args>
+        requires (!AnyTupleArg<Args...>)
         [[nodiscard]] boost::asio::awaitable<results>
-        exec(std::string_view query, argsT ...args) {
-            results res;
-            co_return co_await exec(query, Options{}, args...);
+        exec(std::string_view query, Args&&... args)
+        {
+            if constexpr (sizeof...(Args) > 0) {
+                if constexpr (IsOptions<decltype(getFirstArgumentAsConstRef(args...))>) {
+                    // user explicitly passed an Options as first argument
+                    co_return co_await exec_(
+                        query,
+                        std::forward<Args>(args)...             // perfectly forwards opts + rest
+                        );
+                } else {
+                    // user did not pass an Options as first argument
+                    co_return co_await exec_(
+                        query,
+                        Options{},                            // default opts
+                        std::forward<Args>(args)...             // rest of the args
+                        );
+                }
+            } else {
+                co_return co_await exec_(query, Options{}); // no args, just query
+            }
         }
 
         template<tuple_like T>
-        [[nodiscard]] boost::asio::awaitable<results>
-        exec(std::string_view query, const T& tuple) {
-            results res;
-            co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
-                res = co_await exec(query, Options{}, args...);
-            }, tuple);
-
-            co_return res;
+        [[nodiscard]]
+        auto exec(std::string_view query, T&& tuple)
+            -> boost::asio::awaitable<results>
+        {
+            return std::apply(
+                [&](auto&&... args) {
+                    return exec_(
+                        query,
+                        Options{},
+                        std::forward<decltype(args)>(args)...
+                        );
+                },
+                std::forward<T>(tuple)
+                );
         }
 
-        template<tuple_like T>
-        [[nodiscard]] boost::asio::awaitable<results>
-        exec(std::string_view query,  const Options& opts, const T& tuple) {
 
+        template<tuple_like T>
+        [[nodiscard]]
+        boost::asio::awaitable<results>
+        exec(std::string_view    query,
+             Options      const& opts,
+             T&&                tuple)
+        {
             results res;
-            co_await std::apply([&](auto... args) -> boost::asio::awaitable<void>  {
-                res = co_await exec(query, opts, args...);
-            }, tuple);
+            co_await std::apply(
+                [&](auto&&... args) -> boost::asio::awaitable<void> {
+                    res = co_await exec_(
+                        query,
+                        opts,
+                        std::forward<decltype(args)>(args)...
+                        );
+                },
+                std::forward<T>(tuple)
+                );
 
             co_return res;
         }
@@ -893,17 +1218,46 @@ again:
 
     [[nodiscard]] boost::asio::awaitable<Handle> getConnection(const Options& opts = {});
 
-    template<typename ...argsT>
-    [[nodiscard]] boost::asio::awaitable<results>
-    exec(std::string_view query, const Options& opts, argsT ...args) {
-        auto conn = co_await getConnection(opts);
-        co_return co_await conn.exec(query, opts, args...);
-    }
 
-    template<typename ...argsT>
+    // template<typename ...argsT>
+    // [[nodiscard]] boost::asio::awaitable<results>
+    // exec(std::string_view query, const Options& opts, argsT&& ...args) {
+    //     auto conn = co_await getConnection(opts);
+    //     co_return co_await conn.exec_(query, opts, std::forward<argsT>(args)...);
+    // }
+
+    // template<typename ...argsT>
+    // [[nodiscard]] boost::asio::awaitable<results>
+    // exec(std::string_view query, argsT&& ...args) {
+    //     auto conn = co_await getConnection({});
+    //     co_return co_await conn.exec_(query, Options{}, std::forward<argsT>(args)...);
+    // }
+
+    template<typename... Args>
     [[nodiscard]] boost::asio::awaitable<results>
-    exec(std::string_view query, argsT ...args) {
-        co_return co_await exec(query, Options{}, args...);
+    exec(std::string_view query, Args&&... args)
+    {
+        if constexpr (sizeof...(Args) > 0) {
+            if constexpr (IsOptions<decltype(getFirstArgumentAsConstRef(args...))>) {
+                // user explicitly passed an Options as first argument
+                auto&& conn = co_await getConnection(getFirstArgumentAsConstRef(args...));
+                co_return co_await conn.exec_(
+                    query,
+                    std::forward<Args>(args)...             // perfectly forwards opts + rest
+                    );
+            } else {
+                // user did not pass an Options as first argument
+                auto&& conn = co_await getConnection(); // get connection with default opts
+                co_return co_await conn.exec_(
+                    query,
+                    Options{},                            // default opts
+                    std::forward<Args>(args)...             // rest of the args
+                    );
+            }
+        } else {
+            auto&& conn = co_await getConnection(); // get connection with default opts
+            co_return co_await conn.exec_(query, Options{}); // no args, just query
+        }
     }
 
     /*! Initialize the pool
