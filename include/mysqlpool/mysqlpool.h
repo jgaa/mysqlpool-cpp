@@ -203,7 +203,8 @@ public:
 
     template <typename T>
     void set(std::size_t row, std::size_t col, const T& value) {
-        auto it = data_.begin() + ((row * cols_) + col + 1);
+        const auto pos = row * cols_ + col;
+        auto it = data_.begin() + pos;
         data_.emplace(it, value);
     }
 
@@ -245,7 +246,7 @@ public:
     void copy(std::size_t row, std::size_t col, const std::optional<V>& str) {
         if (str) {
             const auto& v = buffers_.emplace_back(str.value());
-            set(row, col, v);
+            set(row, col, std::string_view{v});
             return;
         }
         set(row, col, nullptr);
@@ -980,6 +981,7 @@ private:
         exec_(std::string_view query, const Options& opts, argsT&& ...args) {
             results res;
             boost::mysql::diagnostics diag;
+            auto error_mode = errorMode(opts);
             try {
 again:
                 if (!co_await handleTimezone(opts)) {
@@ -1003,8 +1005,11 @@ again:
                     assert(stmt->valid());
 
                     boost::system::error_code ec; // error status for query execution
-                    if constexpr (sizeof...(argsT) == 1 && IsGenerator<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
+                    if constexpr (sizeof...(argsT) == 1
+                                  && IsGenerator<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
+                        error_mode = ErrorMode::EM_ALWAYS_FAIL; // Assume batch insert. We can't safely retry once we have started to add data.
                         logQuery("stmt-batch-coro-start", query);
+                        auto count = 0u;
                         auto& gen = getFirstArgumentAsRef(args...);
                         for (auto&& tpl : gen) {
                             auto [err] = co_await connection().async_execute(
@@ -1020,11 +1025,15 @@ again:
                                 );
                             if (err) {
                                 ec = err;
-                                MYSQLPOOL_LOG_DEBUG_("Batch insert failed with ec=" << ec.message());
+                                MYSQLPOOL_LOG_DEBUG_("Batch insert failed for #" << count
+                                                                                 << " with ec=" << ec.message());
                                 break;
                             }
+                            ++count;
                         }
-                    } else if constexpr (sizeof...(argsT) == 1 && RangeOfFieldViewContainer<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
+                    } else if constexpr (sizeof...(argsT) == 1
+                                         && RangeOfFieldViewContainer<std::remove_cvref_t<decltype(getFirstArgumentAsConstRef(args...))>>) {
+                        error_mode = ErrorMode::EM_ALWAYS_FAIL; // Assume batch insert. We can't safely retry once we have started to add data.
                         auto&& batch = getFirstArgumentAsConstRef(args...); // Perfect-forward to avoid copies
 
                         logQuery("stmt-batch-insert-start", query);
@@ -1064,7 +1073,7 @@ again:
                     }
 
                     // Handle the query error if any
-                    if (!handleError(ec, diag, errorMode(opts))) {
+                    if (!handleError(ec, diag, error_mode)) {
                         co_await reconnect();
                         goto again;
                     }
