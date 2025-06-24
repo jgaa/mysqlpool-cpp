@@ -95,8 +95,8 @@ private:
     handle_type coro;
 };
 
-template<std::ranges::input_range Range, typename T>
-auto BindTupleGenerator(const Range& objects, const T& fn)
+template<std::ranges::input_range Range, typename F>
+auto BindTupleGenerator(const Range& objects, F fn)
     -> Generator< decltype(fn(*std::begin(objects))) >
 {
     using TupleType = decltype(fn(*std::begin(objects)));
