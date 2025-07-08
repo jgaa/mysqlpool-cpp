@@ -27,6 +27,9 @@ target_include_directories(${PROJECT_NAME}
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
+# Create alias target for modern CMake usage
+add_library(mysqlpool-cpp::mysqlpool-cpp ALIAS ${PROJECT_NAME})
+
 if (MYSQLPOOL_LOGDEP)
     message("Adding logfault dependency to the library")
     add_dependencies(${PROJECT_NAME} ${MYSQLPOOL_LOGDEP})
