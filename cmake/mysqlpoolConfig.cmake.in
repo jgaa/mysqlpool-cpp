@@ -4,6 +4,17 @@ include(${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@.cmake)
 
 check_required_components(@PROJECT_NAME@)
 
-set(MYSQLPOOL_LIBRARIES mysqlpool)
+# For backward compatibility
+set(MYSQLPOOL_LIBRARIES mysqlpool-cpp::mysqlpool-cpp)
+
+# Create the mysqlpool-cpp::mysqlpool-cpp alias from the exported mysqlpool-cpp::mysqlpool target
+if(TARGET mysqlpool-cpp::mysqlpool AND NOT TARGET mysqlpool-cpp::mysqlpool-cpp)
+    add_library(mysqlpool-cpp::mysqlpool-cpp ALIAS mysqlpool-cpp::mysqlpool)
+endif()
+
+# Also create the alias if not already created during build (fallback for older CMake exports)
+if(NOT TARGET mysqlpool-cpp::mysqlpool-cpp AND TARGET mysqlpool)
+    add_library(mysqlpool-cpp::mysqlpool-cpp ALIAS mysqlpool)
+endif()
 
 message(STATUS "@PROJECT_NAME@ found.")

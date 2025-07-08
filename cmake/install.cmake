@@ -6,7 +6,7 @@ install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}Targets
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY ${MYSQLPOOL_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 include(GenerateExportHeader)
 generate_export_header(${PROJECT_NAME}
@@ -31,16 +31,18 @@ write_basic_package_version_file(
 )
 export(EXPORT ${PROJECT_NAME}Targets
     FILE "${CMAKE_BINARY_DIR}/CMakePackage/${PROJECT_NAME}.cmake"
+    NAMESPACE mysqlpool-cpp::
 )
 SET(CONFIG_SOURCE_DIR ${CMAKE_SOURCE_DIR})
 SET(CONFIG_DIR ${CMAKE_BINARY_DIR})
 SET(${PROJECT_NAME}_INCLUDE_DIR "\${${PROJECT_NAME}_SOURCE_DIR}/include")
-configure_package_config_file(${CMAKE_SOURCE_DIR}/cmake/${PROJECT_NAME}Config.cmake.in
+configure_package_config_file(${MYSQLPOOL_ROOT}/cmake/${PROJECT_NAME}Config.cmake.in
     "${CMAKE_BINARY_DIR}/CMakePackage/${PROJECT_NAME}Config.cmake"
     INSTALL_DESTINATION lib/cmake/${PROJECT_NAME}
     PATH_VARS ${PROJECT_NAME}_INCLUDE_DIR)
 install(EXPORT ${PROJECT_NAME}Targets
     FILE ${PROJECT_NAME}.cmake
+    NAMESPACE mysqlpool-cpp::
     DESTINATION lib/cmake/${PROJECT_NAME}
 )
 install(
