@@ -1391,7 +1391,7 @@ private:
     mutable std::mutex mutex_;
     std::vector<std::unique_ptr<Connection>> connections_;
     boost::asio::steady_timer timer_{ctx_};
-    boost::asio::deadline_timer semaphore_;
+    boost::asio::steady_timer semaphore_;
     const DbConfig& config_;
     bool closed_{false};
     static boost::uuids::random_generator uuid_gen_;

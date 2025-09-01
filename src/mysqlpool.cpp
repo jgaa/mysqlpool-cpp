@@ -100,8 +100,8 @@ boost::asio::awaitable<void> Mysqlpool::close()
     MYSQLPOOL_LOG_DEBUG_("Closing all database connections...");
     closed_ = true;
     timer_.cancel();
-    semaphore_.expires_from_now(
-        boost::posix_time::seconds(config_.timeout_close_all_databases_seconds));
+    semaphore_.expires_after(
+        chrono::seconds(config_.timeout_close_all_databases_seconds));
 
     while(true) {
 
@@ -159,14 +159,21 @@ void Mysqlpool::closed(Connection &conn)
 {
     conn.setState(Connection::State::CLOSED);
 
-    boost::system::error_code ec;
     if (closed_) {
-        semaphore_.cancel(ec);
+        try {
+            semaphore_.cancel();
+        } catch(...) {
+            // ignore
+        }
         return;
     }
 
     // If we have requests pending, they may want to reuse this connection.
-    semaphore_.cancel_one(ec);
+    try {
+        semaphore_.cancel_one();
+    } catch(...) {
+        // ignore
+    }
 }
 
 
@@ -204,7 +211,7 @@ boost::asio::awaitable<void> Mysqlpool::init() {
     }
 
     static constexpr auto one_hundred_years = 8766 * 100;
-    semaphore_.expires_from_now(boost::posix_time::hours(one_hundred_years));
+    semaphore_.expires_after(chrono::hours(one_hundred_years));
 
     startTimer();
 
@@ -294,8 +301,11 @@ void Mysqlpool::release(Handle &h) noexcept {
         h.release();
     }
 
-    boost::system::error_code ec;
-    semaphore_.cancel_one(ec);
+    try {
+        semaphore_.cancel_one();
+    } catch(const std::exception&) {
+        // ignore
+    }
 }
 
 boost::mysql::ssl_mode Mysqlpool::sslMode() const
