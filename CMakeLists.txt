@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 if (NOT DEFINED MYSQLPOOL_VERSION)
-    set(MYSQLPOOL_VERSION 0.5.2)
+    set(MYSQLPOOL_VERSION 0.5.3)
 endif()
 
 project(mysqlpool-cpp
@@ -121,7 +121,6 @@ if(NOT DEFINED USE_BOOST_VERSION)
 endif()
 
 find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
-     system
      context
      chrono
      json
@@ -131,7 +130,6 @@ find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
 
 if (Boost_VERSION VERSION_GREATER_EQUAL "1.85.0")
     find_package(Boost ${USE_BOOST_VERSION} REQUIRED MODULE COMPONENTS
-        system
         context
         chrono
         json
