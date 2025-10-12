@@ -2,6 +2,8 @@ name: CI
 
 on: 
   push:
+    branches:
+      - main
   pull_request:
   schedule:
     - cron: '0 0 1 * *' # This line schedules the workflow to run at 00:00 on the first day of every month
