@@ -417,6 +417,37 @@ T& getFirstArgumentAsRef(T& first, ArgsT...) {
     return first;
 }
 
+namespace detail {
+
+// Generic formatter: stream if possible, else fallback
+template <class T>
+std::string to_log(const T& v) {
+    if constexpr (requires(std::ostream& os, const T& x) { os << x; }) {
+        std::ostringstream oss;
+        oss << v;
+        return oss.str();
+    } else {
+        return "{unprintable}";
+    }
+}
+
+// Overload: empty optionals -> "{null}", otherwise delegate to contained type
+template <class T>
+std::string to_log(const std::optional<T>& v) {
+    if (!v) return "{null}";
+    return to_log(*v);
+}
+
+// Overloads: blobs always -> "{blob}"
+inline std::string to_log(const boost::mysql::blob&) {
+    return "{blob}";
+}
+inline std::string to_log(boost::mysql::blob_view) {
+    return "{blob}";
+}
+
+} // namespace detail
+
 
 class Mysqlpool {
     enum class ErrorMode {
@@ -430,20 +461,20 @@ public:
     using connection_t = boost::mysql::tcp_ssl_connection;
 
     template <typename... T>
-    static std::string logArgs(const T... args) {
+    static std::string logArgs(const T&... args) {
         using namespace detail;
-        if constexpr (sizeof...(T)) {
+        if constexpr (sizeof...(T) > 0) {
             std::stringstream out;
             out << " | args: ";
-            auto col = 0;
-            ((out << (++col == 1 ? "" : ", ")  << args), ...);
+            int col = 0;
+            ((out << (++col == 1 ? "" : ", ") << to_log(args)), ...);
             return out.str();
         }
         return {};
     }
 
     template <typename... T>
-    static void logQuery(std::string_view type, std::string_view query, T... bound) {
+    static void logQuery(std::string_view type, std::string_view query, const T&... bound) {
         MYSQLPOOL_LOG_TRACE_("Executing " << type << " SQL query: " << query << logArgs(bound...));
     }
 
